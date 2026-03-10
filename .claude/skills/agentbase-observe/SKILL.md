@@ -1,0 +1,226 @@
+---
+name: agentbase-observe
+description: Monitor and debug GreenNode AgentBase agents. View runtime logs, endpoint logs, and resource metrics (CPU/RAM). Use when user wants to check agent logs, view stdout/stderr output, debug a running agent, why is my agent failing, check errors, agent not working, debug deployed agent, view output, view CPU/memory metrics, monitor performance, troubleshoot errors, or inspect what their agent is doing on AgentBase. DO NOT use for managing runtime lifecycle (create/update/delete) — use /agentbase-runtime instead.
+argument-hint: <runtime-logs|endpoint-logs|metrics> [runtime-id] [endpoint-id]
+---
+
+# AgentBase Observability
+
+Monitor and debug agents running on GreenNode AgentBase Runtime.
+
+- **Base URL**: `https://agentbase.api.vngcloud.vn/runtime`
+- **Console**: https://aiplatform.console.vngcloud.vn/runtime
+
+## Authentication & Endpoints
+
+Read the shared auth setup reference at `/agentbase` skill's `references/auth-setup.md` for full IAM credential configuration. In brief: check for `GREENNODE_CLIENT_ID` and `GREENNODE_CLIENT_SECRET` in environment variables or `.greennode.json` in the **current working directory only** (do NOT search recursively or look outside the current directory), then use `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)` to obtain a token. On 401: re-run with `--force`.
+
+**IMPORTANT:** Before constructing any API URL, read `/agentbase` skill's `references/endpoints.md` for the domain validation whitelist. Only use domains listed there.
+
+---
+
+## Interaction Guidelines
+
+- **Guide first, act only when asked** — if the user asks "how to" view logs or metrics, respond with instructions and guidance only. Do NOT execute API calls unless they explicitly ask you to do it for them.
+- **Confirm before executing (HARD GATE)** — before fetching logs or metrics, present a summary of what will be queried (runtime ID, endpoint ID, log offset/limit) and ask the user to confirm. Do NOT auto-execute. Only proceed when the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, or ambiguous text), treat it as adjustment input — update the summary and re-present for confirmation again. NEVER interpret a non-confirmation response as approval.
+- **Never auto-decide parameters** — when an action requires parameters (e.g., runtime ID, endpoint ID, log offset, limit), always ask the user for each required value. You may recommend sensible defaults (e.g., limit=100), but never auto-select or impose values without the user's explicit agreement.
+- **Present options, let user choose** — when there are multiple runtimes or endpoints to choose from, list them and let the user pick. Do not make the choice for them.
+
+## Operations
+
+### runtime-logs [id] -- View runtime logs
+
+Fetch logs from an agent runtime container.
+
+**API**: `POST /agent-runtimes/{id}/logs`
+
+**Body** (`LogSearchRequest`):
+- `from` (int, max 5000) -- starting offset (0-based)
+- `limit` (int, max 1000) -- number of log lines to return
+
+**Response** (`LogSearchResult`): `totalCount` (int), `logs` (array of log entries).
+
+> **Note**: Runtime Service pagination is **1-indexed** (first page = `page=1`).
+
+**curl**:
+```bash
+curl -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/logs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 0,
+    "limit": 100
+  }'
+```
+
+*SDK: No dedicated SDK method for logs. Use curl.*
+
+**Tips**:
+- Use `from` to paginate through large log sets (e.g. `"from": 100` to skip first 100 entries)
+- Max `limit` is 1000, max `from` is 5000
+- Grep the response for errors locally if needed
+
+---
+
+### endpoint-logs [id] [endpointId] -- View endpoint logs
+
+Fetch logs from a specific endpoint within a runtime.
+
+**API**: `POST /agent-runtimes/{id}/endpoints/{endpointId}/logs`
+
+**Body**: Same as runtime-logs (`from`, `limit`).
+
+**curl**:
+```bash
+curl -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints/$ENDPOINT_ID/logs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 0,
+    "limit": 100
+  }'
+```
+
+*SDK: No dedicated SDK method for endpoint logs. Use curl.*
+
+---
+
+### metrics [id] [endpointId] -- View endpoint resource metrics
+
+Get CPU and RAM usage metrics for a specific endpoint.
+
+**API**: `GET /agent-runtimes/{id}/endpoints/{endpointId}/metrics`
+
+**curl**:
+```bash
+curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints/$ENDPOINT_ID/metrics" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+*SDK: No dedicated SDK method for metrics. Use curl.*
+
+**Response fields** (`AgentRuntimeEndpointMetrics`): `cpuCores` (double), `memoryBytes` (int64).
+
+---
+
+## Current Limitations
+
+| Feature | Status |
+|---------|--------|
+| Log filtering by level (INFO/WARN/ERROR) | Not supported — all log levels are returned together |
+| Log time range filter | Not supported — only offset-based pagination (`from`/`limit`) |
+| Log keyword search | Not supported — grep results locally after fetching |
+| Historical metrics | Not supported — metrics are point-in-time only |
+| Log streaming/tailing | Not supported — use polling as a workaround (see below) |
+| Alerting/thresholds | Not supported |
+
+**Pseudo-tailing pattern**: To approximate log tailing, poll the logs endpoint every 5-10 seconds with an increasing `from` offset. Note: frequent polling generates many API calls — be mindful of rate limits and avoid polling for extended periods:
+```bash
+OFFSET=0
+while true; do
+  RESULT=$(curl -s -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/logs" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d "{\"from\": $OFFSET, \"limit\": 50}")
+  COUNT=$(echo "$RESULT" | jq '.totalCount')
+  echo "$RESULT" | jq -r '.logs[]'
+  OFFSET=$COUNT
+  sleep 5
+done
+```
+
+---
+
+## Log Analysis Guide
+
+### Common Error Signatures
+
+When reviewing logs, look for these patterns:
+
+| Pattern | Meaning | Next Step |
+|---------|---------|-----------|
+| `Traceback (most recent call last)` | Python exception — read the last line for the actual error | Check the exception type and message at the bottom of the traceback |
+| `ModuleNotFoundError: No module named '...'` | Missing dependency | Add the module to `requirements.txt` and rebuild |
+| `ImportError: cannot import name '...'` | Wrong package version or API change | Check package version compatibility |
+| `ConnectionRefusedError` / `ConnectionError` | Cannot reach external service | Verify the service URL, check if auth credentials are injected correctly |
+| `401 Unauthorized` / `403 Forbidden` | Authentication/authorization failure | Check IAM token, service account permissions, or external API key |
+| `OSError: [Errno 98] Address already in use` | Port conflict (usually 8080) | Ensure only one process binds to port 8080 |
+| `MemoryError` / `Killed` | Out of memory | Scale up flavor or optimize memory usage |
+| `TimeoutError` / `ReadTimeout` | External API or LLM call timed out | Increase timeout, check LLM endpoint health |
+| `KeyError: '...'` | Missing expected field in payload/response | Check payload format matches what handler expects |
+| `Health check failed` | `/health` endpoint not returning 200 | Verify `@app.ping` is defined and returns `PingStatus.HEALTHY` |
+
+### Debugging Decision Tree
+
+Use this flow to diagnose common issues:
+
+```
+Agent not responding?
+├─ Check runtime status (/agentbase-runtime get)
+│  ├─ Status = FAILED → Check runtime logs for startup errors
+│  ├─ Status = CREATING → Wait, then re-check
+│  └─ Status = ACTIVE → Check endpoint logs
+│     ├─ Logs show Python traceback → Fix the code error
+│     ├─ Logs show "Health check failed" → Fix health endpoint
+│     ├─ No recent logs → Container may have crashed silently, check metrics
+│     └─ Logs look normal → Issue may be in request routing, check endpoint URL
+
+Agent returns errors (4xx/5xx)?
+├─ 500 Internal Server Error → Check endpoint logs for traceback
+├─ 502 Bad Gateway → Container crashed or not ready, check runtime logs
+├─ 503 Service Unavailable → Container starting up or overloaded, check metrics
+└─ 401/403 → Check if agent's outbound auth is configured (/agentbase-auth)
+
+Agent is slow?
+├─ Check metrics for CPU/RAM
+│  ├─ CPU near limit → CPU-bound (e.g., stuck loop, heavy computation)
+│  │  └─ Scale up flavor or optimize code
+│  ├─ RAM near limit → Memory-bound (e.g., large model in memory, data leak)
+│  │  └─ Scale up flavor or fix memory leak
+│  └─ Both low → Bottleneck is external (LLM API, database, network)
+│     └─ Check logs for slow external calls, add request timing
+```
+
+### Correlating Logs with Metrics
+
+- **High CPU + normal RAM** → CPU-bound workload (tight loops, heavy computation, synchronous LLM calls)
+- **High RAM + normal CPU** → Memory leak or large data structures (loading entire datasets, caching without limits)
+- **Both high** → Resource exhaustion — scale up the flavor or optimize both code paths
+- **Both low + slow responses** → External dependency bottleneck (LLM API latency, database queries, network timeouts)
+
+### Local Log Filtering Workarounds
+
+Since the API doesn't support server-side filtering, use these client-side techniques after fetching logs:
+
+```bash
+# Filter for errors only
+echo "$LOGS" | jq -r '.logs[]' | grep -i "error\|traceback\|exception\|failed"
+
+# Filter for a specific keyword
+echo "$LOGS" | jq -r '.logs[]' | grep -i "your-keyword"
+
+# Show only the last N lines
+echo "$LOGS" | jq -r '.logs[]' | tail -20
+
+# Count errors
+echo "$LOGS" | jq -r '.logs[]' | grep -ci "error"
+```
+
+## Troubleshooting Guide
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| Agent not responding | Runtime crashed or not started | Check runtime status (`/agentbase-runtime get`), then check runtime logs for crash messages |
+| 502/503 errors on endpoint | Container startup failure | Check endpoint logs for startup failures, verify health endpoint returns 200 |
+| High latency | Resource saturation | Check metrics for CPU/RAM saturation, consider scaling up flavor or replicas |
+| OOM kills | Memory spikes exceeding limit | Check metrics for memory spikes, increase flavor size |
+| Image pull errors | Wrong URL or missing credentials | Verify `imageUrl` and registry credentials in runtime config |
+| Container crash loop | Code error or missing dependencies | Check runtime logs for Python tracebacks or missing dependencies |
+
+## Instructions
+
+1. Parse the user's argument to determine the operation (`runtime-logs`, `endpoint-logs`, `metrics`).
+2. If a runtime ID is needed and not provided, list runtimes first (`/agentbase-runtime list`) and ask the user to pick one.
+3. If an endpoint ID is needed, list endpoints for the runtime and ask the user to pick one.
+4. For logs, default to `{"from": 0, "limit": 100}` to fetch the most recent entries. Use `from` to paginate if more logs are needed (max `from`: 5000, max `limit`: 1000).
+5. Present log output in a readable format, highlighting errors and warnings.
+6. For metrics, display CPU (`cpuCores`) and RAM (`memoryBytes`, convert to MB/GB). To show usage as percentages, cross-reference the runtime's flavor via `/agentbase-runtime get` to obtain the flavor's CPU/RAM limits.
