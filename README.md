@@ -96,14 +96,14 @@ Use `$skill-name` or natural language. For deploy & monitor, switch to Claude Co
 ### Lifecycle Overview
 
 ```
-Scaffold → Register → Configure → Test → Deploy → Monitor → Teardown
+Scaffold → Configure → Code → Test → Deploy → Monitor → Teardown
 ```
 
 ### All Skills
 
 | # | Command | What it does |
 |---|---------|-------------|
-| 1 | `/agentbase-wizard` | 10-step guided wizard — start here if you're new |
+| 1 | `/agentbase-wizard` | 9-step guided wizard — start here if you're new |
 | 2 | `/agentbase` | Platform reference & information lookup |
 | 3 | `/agentbase-init` | Scaffold a new agent project (FastAPI, LangChain, LangGraph) |
 | 4 | `/agentbase-identity` | Register/manage agent identity on the platform |
@@ -160,9 +160,8 @@ Scaffold → Register → Configure → Test → Deploy → Monitor → Teardown
 
 ```bash
 /agentbase-init my-chatbot --langgraph      # Scaffold
-/agentbase-identity create my-chatbot       # Register
 /aip api-keys create my-chatbot-key         # LLM access
-/agentbase-memory create                    # Memory
+/agentbase-memory create                    # Memory (optional)
 /agentbase-test local                       # Test
 /agentbase-deploy my-chatbot                # Deploy
 /agentbase-observe runtime-logs <id>        # Monitor
@@ -171,7 +170,7 @@ Scaffold → Register → Configure → Test → Deploy → Monitor → Teardown
 ### First Time? Use the Wizard
 
 ```bash
-/agentbase-wizard              # Follow 10 steps from setup to deploy
+/agentbase-wizard              # Follow 9 steps from setup to deploy
 /agentbase-wizard resume       # Come back later and continue
 ```
 

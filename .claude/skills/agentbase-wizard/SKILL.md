@@ -1,19 +1,19 @@
 ---
 name: agentbase-wizard
-description: "START HERE if you're new to GreenNode AgentBase. Guided full lifecycle wizard for creating AI agents on GreenNode AgentBase. Use when user is new to the platform, wants step-by-step guidance from zero to deployed agent, or says 'help me create an agent'. Covers: setup, scaffold, identity, auth, memory, test, deploy, verify. DO NOT use if user wants to perform a specific operation (use the dedicated skill instead)."
+description: "START HERE if you're new to GreenNode AgentBase. Guided full lifecycle wizard for creating AI agents on GreenNode AgentBase. Use when user is new to the platform, wants step-by-step guidance from zero to deployed agent, or says 'help me create an agent'. Covers: setup, scaffold, LLM, memory, identity, auth, code, test, deploy, verify. DO NOT use if user wants to perform a specific operation (use the dedicated skill instead)."
 user-invocable: true
 argument-hint: "[resume|step-N|reset]"
 ---
 
 # AgentBase Wizard - Full Lifecycle Guide
 
-A guided 10-step wizard that takes a new user from zero to a deployed AI agent on GreenNode AgentBase. Each step orchestrates existing skills and checks if work is already done (idempotent).
+A guided 9-step wizard that takes a new user from zero to a deployed AI agent on GreenNode AgentBase. Each step orchestrates existing skills and checks if work is already done (idempotent).
 
 ## Interaction Guidelines
 
-- **Show progress** at each step: `Step X/10: [Step Name]`
+- **Show progress** at each step: `Step X/9: [Step Name]`
 - **Check before acting** -- each step checks if already completed before doing work
-- **Allow skipping** optional steps (Steps 6 and 7)
+- **Allow skipping** optional steps (Steps 4 and 5)
 - **Store state** in `.agentbase-state.json` so the wizard can resume if interrupted
 - **Don't duplicate skill logic** -- reference and invoke existing skills (`/agentbase-init`, `/agentbase-identity`, `/agentbase-auth`, `/agentbase-memory`, `/agentbase-deploy`, `/aip`, `/agentbase-observe`)
 - **IMPORTANT:** Before constructing any API URL, read `/agentbase` skill's `references/endpoints.md` for the domain validation whitelist. Only use domains listed there.
@@ -54,7 +54,7 @@ Maintain `.agentbase-state.json` in the project directory. Update it after each 
 
 ---
 
-## Step 1/10: Check Prerequisites
+## Step 1/9: Check Prerequisites
 
 **Goal**: Ensure the user has valid IAM credentials.
 
@@ -67,7 +67,7 @@ Maintain `.agentbase-state.json` in the project directory. Update it after each 
 
 ---
 
-## Step 2/10: Scaffold Project
+## Step 2/9: Scaffold Project
 
 **Goal**: Create the agent project structure **in the current working directory**.
 
@@ -85,59 +85,7 @@ All project files are created flat in the CWD. The user should already be in the
 
 ---
 
-## Step 3/10: Customize Agent Code
-
-**Goal**: Help the user customize their agent's logic.
-
-1. Ask the user: "What should your agent do? Describe its purpose and I can help you customize `main.py`. Or if you prefer to code it yourself later, we can skip this step."
-2. If the user describes what the agent should do:
-   - Help edit `main.py` with custom logic based on their description
-   - For LangChain/LangGraph projects, help set up tools, prompts, or graph nodes as appropriate
-   - Show the user the modified code and confirm it looks right
-3. If the user wants to skip: proceed to next step
-4. Update state: `wizard_step: 3`
-
----
-
-## Step 4/10: Set Up Agent Identity
-
-**Goal**: Register the agent on the AgentBase platform — or use an existing identity.
-
-1. **Always list existing identities first** by calling the Identity API:
-   ```bash
-   curl -s "https://agentbase.api.vngcloud.vn/identity/api/v1/agent-identities?page=0&size=100" \
-     -H "Authorization: Bearer $TOKEN"
-   ```
-
-2. **Check state for a previously configured identity**:
-   - Read `agent_identity` from `.agentbase-state.json` or `.greennode.json`
-   - If a name is found AND it exists in the list above, inform the user: "You already have identity `<name>` configured for this project."
-   - Ask: "Do you want to keep using `<name>`, pick a different existing identity, or create a new one?"
-
-3. **If no identity is configured yet (or user wants to change)**, present the user with clear options:
-   - **Option A: Use an existing identity** — if the list from step 1 is non-empty, display the available identities (name, description, created date) and let the user pick one
-   - **Option B: Create a new identity** — proceed to parameter collection (see below)
-
-4. **If creating a new identity — collect parameters with user confirmation**:
-   - Suggest the project name as the default identity name, but **explicitly ask the user** to confirm or change it
-   - Ask if they want to add a description (optional)
-   - Ask if they want to set allowed return URLs (optional)
-   - **Show a summary of all parameters and ask for confirmation before creating**:
-     ```
-     About to create agent identity:
-       Name:        <name>
-       Description: <description or "none">
-       Return URLs: <urls or "none">
-     Proceed? (yes/no)
-     ```
-   - Only after user confirms, invoke `/agentbase-identity` create logic
-
-5. Update `.greennode.json` with the `agent_identity` value
-6. Update state: `wizard_step: 4`, `agent_identity`
-
----
-
-## Step 5/10: Configure LLM Access
+## Step 3/9: Configure LLM Access
 
 **Applies to**: LangChain and LangGraph projects only. Skip for Basic projects.
 
@@ -158,43 +106,74 @@ All project files are created flat in the CWD. The user should already be in the
      AIP_BASE_URL=https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1
      LLM_MODEL=<chosen-model>
      ```
-3. Update state: `wizard_step: 5`, `aip_key_name`
+3. Update state: `wizard_step: 3`, `aip_key_name`
 
 ---
 
-## Step 6/10: Configure External Auth (Optional)
-
-**Goal**: Set up outbound authentication for external APIs the agent needs.
-
-1. Ask the user: "Does your agent need to call any external APIs that require authentication (e.g., third-party services, databases)? If not, we can skip this step."
-2. If yes:
-   - Guide through `/agentbase-auth` to store API keys or configure OAuth2 providers on the identity
-   - Help set up each external service the user needs
-3. If no: skip
-4. Update state: `wizard_step: 6`
-
----
-
-## Step 7/10: Set Up Memory (Optional)
+## Step 4/9: Set Up Memory (Optional)
 
 **Goal**: Configure conversation memory if the agent needs it.
 
 1. Ask the user: "Does your agent need conversation memory (to remember past messages across sessions)? If not, we can skip this step."
 2. If yes:
    - Guide through `/agentbase-memory create` to create a memory store
-   - Help integrate memory into the agent code (update `main.py` with memory client usage)
-   - **Short-term memory (conversation history):**
-     - For LangChain projects, help set up `AgentBaseMemoryEvents` as a checkpointer via `create_agent(checkpointer=...)`
-     - For LangGraph projects, help set up `AgentBaseMemoryEvents` as a checkpointer via `builder.compile(checkpointer=...)`
-   - **Long-term memory (semantic facts):**
-     - Help set up `remember`/`recall` tools that use `MemoryClient` SDK to store/search semantic facts
-     - These tools allow the agent to store and retrieve semantic facts (user preferences, learned knowledge) that persist across conversations
+   - Note: Memory integration into agent code will be handled in Step 6 (Customize Agent Code), after all infrastructure is in place.
 3. If no: skip
-4. Update state: `wizard_step: 7`, `memory_id` (if created)
+4. Update state: `wizard_step: 4`, `memory_id` (if created)
 
 ---
 
-## Step 8/10: Local Testing
+## Step 5/9: Set Up Identity & External Auth (Optional)
+
+**Goal**: Register the agent identity and configure outbound authentication for external APIs.
+
+> **When is this step needed?** Only if your agent calls external services that require authentication (e.g., third-party APIs, databases with credentials). The AgentBase Runtime automatically provisions an identity for basic deployments — you only need an explicit identity when using outbound auth features like `apikey retrieve-key`, `delegated request-key`, or `oauth2 m2m-token`.
+
+1. Ask the user: "Does your agent need to call any external APIs that require authentication (e.g., third-party services, databases)? If not, we can skip this step — the runtime will auto-provision an identity for your agent."
+
+2. **If yes — Set up Identity first**, then Auth:
+
+   a. **Identity**: List existing identities and let the user pick one or create a new one:
+      - **Always list existing identities first** by calling the Identity API:
+        ```bash
+        curl -s "https://agentbase.api.vngcloud.vn/identity/api/v1/agent-identities?page=0&size=100" \
+          -H "Authorization: Bearer $TOKEN"
+        ```
+      - Check state for a previously configured identity in `.agentbase-state.json` or `.greennode.json`
+      - If a name is found AND it exists in the list, inform the user and ask if they want to keep it, pick a different one, or create a new one
+      - If creating a new identity, collect parameters (name, description, return URLs) with user confirmation before creating via `/agentbase-identity`
+      - Update `.greennode.json` with the `agent_identity` value
+
+   b. **External Auth**: Guide through `/agentbase-auth` to store API keys or configure OAuth2 providers on the identity. Help set up each external service the user needs.
+
+3. **If no**: skip — the runtime will auto-provision an identity during deployment.
+4. Update state: `wizard_step: 5`, `agent_identity` (if created)
+
+---
+
+## Step 6/9: Customize Agent Code
+
+**Goal**: Help the user customize their agent's logic — now that all infrastructure (LLM, memory, identity, auth) is configured.
+
+1. Ask the user: "What should your agent do? Describe its purpose and I can help you customize `main.py`. Or if you prefer to code it yourself later, we can skip this step."
+2. If the user describes what the agent should do:
+   - Help edit `main.py` with custom logic based on their description
+   - For LangChain/LangGraph projects, help set up tools, prompts, or graph nodes as appropriate
+   - **If memory was configured in Step 4**, integrate it into the agent code:
+     - **Short-term memory (conversation history):**
+       - For LangChain projects, help set up `AgentBaseMemoryEvents` as a checkpointer via `create_agent(checkpointer=...)`
+       - For LangGraph projects, help set up `AgentBaseMemoryEvents` as a checkpointer via `builder.compile(checkpointer=...)`
+     - **Long-term memory (semantic facts):**
+       - Help set up `remember`/`recall` tools that use `MemoryClient` SDK to store/search semantic facts
+       - These tools allow the agent to store and retrieve semantic facts (user preferences, learned knowledge) that persist across conversations
+   - **If external auth was configured in Step 5**, integrate credential retrieval into the agent code as needed
+   - Show the user the modified code and confirm it looks right
+3. If the user wants to skip: proceed to next step
+4. Update state: `wizard_step: 6`
+
+---
+
+## Step 7/9: Local Testing
 
 **Goal**: Validate the agent works before deploying.
 
@@ -205,11 +184,11 @@ All project files are created flat in the CWD. The user should already be in the
    - If local tests pass, offer to **build and test in Docker**:
      invoke `/agentbase-test docker` to build the image and run contract tests in a container
 3. The agent must pass at least the validation step before proceeding to deployment
-4. Update state: `wizard_step: 8`
+4. Update state: `wizard_step: 7`
 
 ---
 
-## Step 9/10: Deploy
+## Step 8/9: Deploy
 
 **Goal**: Build, push, and deploy the agent to AgentBase Runtime.
 
@@ -220,11 +199,11 @@ All project files are created flat in the CWD. The user should already be in the
    - Creating or updating the runtime
    - Waiting for ACTIVE status
 2. Store the runtime ID and vCR repo name from the deployment
-3. Update state: `wizard_step: 9`, `runtime_id`, `vcr_repo_name`
+3. Update state: `wizard_step: 8`, `runtime_id`, `vcr_repo_name`
 
 ---
 
-## Step 10/10: Verify and Next Steps
+## Step 9/9: Verify and Next Steps
 
 **Goal**: Confirm the deployment is working and guide the user on what's next.
 
@@ -250,7 +229,7 @@ All project files are created flat in the CWD. The user should already be in the
 
      Project:    <project-name>
      Framework:  <framework>
-     Identity:   <identity-name>
+     Identity:   <identity-name or "Auto-provisioned by runtime">
      Runtime ID: <runtime-id>
      Status:     ACTIVE
      Endpoint:   <endpoint-url>
@@ -267,7 +246,7 @@ All project files are created flat in the CWD. The user should already be in the
    - Use `/agentbase-auth` to add more external service integrations
    - Re-deploy updates with `/agentbase-deploy`
 
-5. Update state: `wizard_step: 10`
+5. Update state: `wizard_step: 9`
 
 ---
 
