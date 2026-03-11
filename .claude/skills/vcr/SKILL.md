@@ -1,14 +1,13 @@
 ---
 name: vcr
 description: >
-  Manage Docker repositories on GreenNode Container Registry (vCR). Use this skill whenever the user mentions
-  vCR, GreenNode container registry, Docker registry on GreenNode, or wants to create/list/delete Docker
-  repositories, manage registry credentials (robot accounts), push/pull images on vcr.vngcloud.vn,
-  list images or artifacts in a vCR repository, or set up Docker login credentials for GreenNode. Also trigger
-  when user mentions "container registry" in the context of GreenNode or VNG infrastructure, says "push image
-  to GreenNode", "docker login vCR", "create docker repo", "list my images", "manage container repository",
-  or needs to work with Docker images on the GreenNode platform. Do NOT trigger for general Docker questions
-  unrelated to GreenNode or vCR.
+  Manage Docker repositories and container images for agent deployment. Use when user wants to create a Docker
+  repository, push or pull Docker images, manage registry credentials (robot accounts), set up Docker login,
+  list images or artifacts in a repository, or prepare container images for deployment. Also trigger when user
+  says "create docker repo", "push my image", "docker registry", "push image", "list my images",
+  "manage container repository", "set up registry", "docker login", "container registry", "build and push",
+  or needs to work with Docker images as part of the agent deployment pipeline. Do NOT trigger for general
+  Docker questions unrelated to agent deployment or the platform registry.
 argument-hint: <repos|robot-accounts|images|artifacts> [repo-name]
 user-invocable: true
 ---

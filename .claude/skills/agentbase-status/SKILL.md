@@ -1,6 +1,6 @@
 ---
 name: agentbase-status
-description: Show dashboard of all GreenNode AgentBase resources. Use when user wants to see an overview of their resources, show me everything, inventory, what do I have, list all resources, check what's deployed, show my agents, get a status summary across all services (identities, runtimes, memory, auth, registry, AI platform), or wants a bird's-eye view of their GreenNode setup. Also trigger when user says 'status', 'dashboard', 'overview', 'show all my stuff', 'what resources exist', 'summarize my setup', or wants to quickly see everything they have on the platform at once. DO NOT use for managing specific resources (use the dedicated skill instead).
+description: Show dashboard of all platform resources and deployed agents. Use when user wants to see an overview of their resources, check what's deployed, show all agents, get a status summary across all services (identities, runtimes, memory, auth, registry, models), or wants a bird's-eye view of their setup. Also trigger when user says 'status', 'dashboard', 'overview', 'show everything', 'what do I have', 'list all resources', 'check what's deployed', 'show my agents', 'inventory', 'summarize my setup', or wants to quickly see everything they have on the platform at once. DO NOT use for managing specific resources (use the dedicated skill instead).
 argument-hint: [--json]
 user-invocable: true
 ---

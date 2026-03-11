@@ -1,6 +1,6 @@
 ---
 name: agentbase-teardown
-description: Clean up and remove all GreenNode AgentBase resources for a project. Use when user wants to tear down, clean up, decommission, nuke, remove everything, start over, or delete all resources associated with an agent (runtime, identity, auth, memory, registry, API keys). Also trigger when user says 'delete everything', 'clean slate', 'remove all my agent stuff', 'decommission agent', 'wipe project', or wants to completely remove an agent and all its associated platform resources in one go. DO NOT use for deleting a single resource (use the dedicated skill instead).
+description: Clean up and remove all platform resources for an agent project. Use when user wants to tear down, clean up, decommission, remove everything, start over, or delete all resources associated with an agent (runtime, identity, auth, memory, registry, API keys). Also trigger when user says 'delete everything', 'clean slate', 'tear down', 'remove all resources', 'clean up project', 'decommission agent', 'wipe project', 'start over', 'nuke it', or wants to completely remove an agent and all its associated resources in one go. DO NOT use for deleting a single specific resource — if user wants to delete just one runtime, use /agentbase-runtime; just one identity, use /agentbase-identity; just one auth provider, use /agentbase-auth; just one memory, use /agentbase-memory. Only use this skill when the intent is to remove ALL or MOST resources for an agent.
 argument-hint: [project-name] [--dry-run]
 user-invocable: true
 ---

@@ -63,4 +63,4 @@ If any individual API call fails, handle that section as an error rather than fa
 
 ## Response Shape
 
-See `references/endpoints.md` for full response shape documentation (Identity uses Spring-style `{content, totalElements}`, other services use VNG-style `{listData, totalItem}`).
+See `references/endpoints.md` for full response shape documentation (Identity uses Spring-style `{content, totalElements}`, other services use GreenNode-style `{listData, totalItem}`).

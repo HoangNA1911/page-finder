@@ -1,6 +1,6 @@
 ---
 name: agentbase
-description: GreenNode AgentBase platform reference for GreenNode AI platform. Use when user asks general questions about AgentBase, GreenNode platform, GreenNode AI, platform architecture, SDK imports, authentication setup, IAM service account creation, IAM permissions/policies, client_id/client_secret setup, or which AgentBase skill to use. Also trigger when user asks "what is AgentBase", "how does AgentBase work", "AgentBase overview", "explain the platform", "which skill should I use", "how do I get started with GreenNode", or needs help choosing between AgentBase skills. This is a reference guide — for specific operations, the user should invoke the dedicated skill instead.
+description: Platform reference and getting-started guide. Use for general questions about the platform, architecture, available services, SDK, IAM setup, credentials, or which skill to use. IMPORTANT: If the user wants to BUILD an agent (not just learn about the platform), use /agentbase-wizard instead — do not answer with reference material. Trigger phrases: "how does the platform work", "what services are available", "platform overview", "explain the architecture", "which skill should I use", "how do I get started", "what can I do here", "how do I set up credentials", "IAM setup". This is a reference guide — for specific operations, invoke the dedicated skill.
 user-invocable: false
 ---
 
@@ -116,7 +116,7 @@ See the shared reference at `references/endpoints.md` for all API base URLs, pag
 
 **Important**: Response shapes differ across services:
 - **Identity Service** (Spring-style): items in `.content`, count in `.totalElements`, pages in `.totalPages`
-- **Runtime / Memory / vCR / AIP** (VNG-style): items in `.listData`, count in `.totalItem`, pages in `.totalPage`
+- **Runtime / Memory / vCR / AIP** (GreenNode-style): items in `.listData`, count in `.totalItem`, pages in `.totalPage`
 
 See `references/endpoints.md` for full response JSON examples.
 

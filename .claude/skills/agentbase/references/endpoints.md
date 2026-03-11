@@ -79,7 +79,7 @@ API responses use **two different pagination formats** depending on the service:
 - `number` — current page number (0-indexed)
 - `size` — page size
 
-### Runtime / Memory / vCR / AIP (VNG-style)
+### Runtime / Memory / vCR / AIP (GreenNode-style)
 ```json
 {
   "listData": [ ... ],
