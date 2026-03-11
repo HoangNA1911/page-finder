@@ -26,6 +26,7 @@ The Memory Service provides conversation history (short-term events) and semanti
 
 - `SEMANTIC` - General semantic fact extraction
 - `USER_PREFERENCE` - Extract user preferences and habits
+- `CUSTOM` - Custom fact extraction with a user-defined prompt (`customFactExtractionPrompt`). **When using `customFactExtractionPrompt`, the type MUST be `CUSTOM`** — using `SEMANTIC` or `USER_PREFERENCE` with a custom prompt is not valid.
 
 ### Namespace Template
 
@@ -65,10 +66,10 @@ Creates a memory container with long-term memory strategies.
 - `eventExpiryDuration` (int, 1-365 days)
 - `longTermMemoryStrategies` (array of strategy objects, each with):
   - `name` (string, min 1 char)
-  - `type` (string, min 1 char) -- e.g. `SEMANTIC`, `USER_PREFERENCE`
+  - `type` (string, min 1 char) -- `SEMANTIC`, `USER_PREFERENCE`, or `CUSTOM`
   - `namespaceTemplate` (string, 0-50 chars, pattern `^[a-zA-Z0-9{}/._-]*$`)
   - `enableAutomaticMemoryRecordGeneration` (bool)
-  - `customFactExtractionPrompt` (string, optional) -- custom prompt for fact extraction
+  - `customFactExtractionPrompt` (string, optional) -- custom prompt for fact extraction. **Requires `type: "CUSTOM"`**
 
 > **Note**: The `name` field is required by the v3 API but may not be present in the SDK's `LongTermMemoryStrategy` model. When using the SDK, pass `name` as an extra keyword argument or use curl for full API field support.
 
@@ -97,7 +98,7 @@ request = MemoryCreateRequest(
 memory = await client.create_async(request=request)
 ```
 
-Strategy types: `SEMANTIC` (general facts), `USER_PREFERENCE` (user habits). Add multiple strategies by repeating in the array.
+Strategy types: `SEMANTIC` (general facts), `USER_PREFERENCE` (user habits), `CUSTOM` (custom extraction with `customFactExtractionPrompt`). Add multiple strategies by repeating in the array. **If user provides `customFactExtractionPrompt`, always set `type` to `CUSTOM`.**
 
 ---
 
@@ -124,21 +125,52 @@ for memory in result.list_data:
 
 ### 3. get - Get Memory Details
 
-**API:** `GET /memories/{id}`
+Fetches memory info AND its long-term memory strategies in a single view. **Always call both APIs** to give the user the complete configuration they set during creation.
+
+**APIs:**
+1. `GET /memories/{id}` — basic info (name, description, eventExpiryDuration, status)
+2. `GET /memories/{id}/long-term-memory-strategies` — strategies configured for this memory
 
 **curl:**
 ```bash
+# Step 1: Get memory basic info
 curl "https://agentbase.api.vngcloud.vn/memory/memories/mem_abc123" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Step 2: Get long-term memory strategies
+curl "https://agentbase.api.vngcloud.vn/memory/memories/mem_abc123/long-term-memory-strategies" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 **SDK:**
 ```python
-memory = await client.get_async(id="mem_abc123")
+import asyncio
+from greennode_agentbase.memory import MemoryClient
+
+client = MemoryClient()
+
+# Fetch both in parallel for efficiency
+memory, strategies = await asyncio.gather(
+    client.get_async(id="mem_abc123"),
+    client.listLongTermMemoryStrategies_async(id="mem_abc123"),
+)
+
+# Display complete memory detail
 print(f"Name: {memory.name}")
+print(f"Description: {memory.description}")
 print(f"Status: {memory.status}")
 print(f"Event expiry: {memory.event_expiry_duration} days")
+print(f"Created: {memory.created_at}")
+print(f"\nLong-Term Memory Strategies ({len(strategies)} configured):")
+for s in strategies:
+    print(f"  - ID: {s['id']}, Name: {s.get('name')}, Type: {s['type']}")
+    print(f"    Namespace: {s.get('namespaceTemplate')}")
+    print(f"    Auto-generate: {s.get('enableAutomaticMemoryRecordGeneration')}")
+    if s.get('customFactExtractionPrompt'):
+        print(f"    Custom prompt: {s['customFactExtractionPrompt']}")
 ```
+
+**IMPORTANT:** When the user asks to "get", "show", "detail", or "inspect" a memory, ALWAYS present both the basic info and the strategies together. Do NOT show only the basic info without strategies — that gives an incomplete picture compared to what was configured at creation time.
 
 ---
 
@@ -409,7 +441,11 @@ See the reference files for complete integration examples:
 
 ## Long-Term Memory Strategies
 
-To list strategies configured for a memory, see `references/advanced-operations.md`.
+Strategies are automatically shown when getting memory details (see Operation 3 above). To list strategies independently, use:
+
+**API:** `GET /memories/{memoryId}/long-term-memory-strategies`
+
+See `references/advanced-operations.md` for curl and SDK examples.
 
 ---
 
