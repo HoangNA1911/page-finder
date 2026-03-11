@@ -1,6 +1,6 @@
 ---
 name: agentbase
-description: GreenNode AgentBase platform reference for GreenNode AI platform. Use when user asks general questions about AgentBase, GreenNode platform, GreenNode AI, platform architecture, SDK imports, authentication setup, IAM service account creation, IAM permissions/policies, client_id/client_secret setup, or which AgentBase skill to use. This is a reference guide — for specific operations, the user should invoke the dedicated skill instead.
+description: GreenNode AgentBase platform reference for GreenNode AI platform. Use when user asks general questions about AgentBase, GreenNode platform, GreenNode AI, platform architecture, SDK imports, authentication setup, IAM service account creation, IAM permissions/policies, client_id/client_secret setup, or which AgentBase skill to use. Also trigger when user asks "what is AgentBase", "how does AgentBase work", "AgentBase overview", "explain the platform", "which skill should I use", "how do I get started with GreenNode", or needs help choosing between AgentBase skills. This is a reference guide — for specific operations, the user should invoke the dedicated skill instead.
 user-invocable: false
 ---
 

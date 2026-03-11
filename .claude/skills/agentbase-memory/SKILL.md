@@ -1,7 +1,8 @@
 ---
 name: agentbase-memory
-description: Work with GreenNode AgentBase Memory Service. Use when user wants to manage conversation history, remember things across sessions, create memory stores, log conversation events, generate or search long-term memory records, extract facts via semantic search, or integrate LangChain/LangGraph checkpointer/store with AgentBase memory. DO NOT use for runtime logs (use /agentbase-observe) or agent registration (use /agentbase-identity).
+description: Work with GreenNode AgentBase Memory Service. Use when user wants to manage conversation history, remember things across sessions, create memory stores, log conversation events, generate or search long-term memory records, extract facts via semantic search, persist agent data between conversations, give an agent long-term memory, or integrate LangChain/LangGraph checkpointer/store with AgentBase memory. Also trigger when user says "agent memory", "store conversations", "remember across sessions", "create memory", "search memories", "fact extraction", "my agent needs to remember", or wants their agent to retain context between interactions. DO NOT use for runtime logs (use /agentbase-observe) or agent registration (use /agentbase-identity).
 argument-hint: <create|list|get|delete|events|records|search|generate|integrate> [memory-id]
+user-invocable: true
 ---
 
 # AgentBase Memory Service
@@ -211,14 +212,7 @@ curl "https://agentbase.api.vngcloud.vn/memory/memories/mem_abc123/actors/user-1
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**SDK:**
-```python
-result = await client.listEvents_async(
-    id="mem_abc123", actorId="user-1", sessionId="session-1", page=1, size=20
-)
-for event in result.list_data:
-    print(f"[{event.role}] {event.content}")
-```
+**SDK:** See `references/advanced-operations.md` for SDK examples.
 
 #### Create Event
 
@@ -238,19 +232,7 @@ curl -X POST "https://agentbase.api.vngcloud.vn/memory/memories/mem_abc123/actor
   }'
 ```
 
-**SDK:**
-```python
-from greennode_agentbase.memory.models import EventCreateRequest, ChatMessage
-
-request = EventCreateRequest(
-    payload=ChatMessage(role="user", content="What is the weather in Saigon?")
-)
-await client.createEvent_async(
-    id="mem_abc123", actorId="user-1", sessionId="session-1", request=request
-)
-```
-
-> **Note**: The SDK uses `ChatMessage(role=..., content=...)` which maps to the API's `EventPayload(type=..., role=..., message=...)`. The SDK handles the field mapping automatically.
+**SDK:** See `references/advanced-operations.md` for SDK examples.
 
 #### List Actors
 
@@ -262,12 +244,7 @@ curl "https://agentbase.api.vngcloud.vn/memory/memories/mem_abc123/actors?page=1
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**SDK:**
-```python
-result = await client.listActors_async(id="mem_abc123", page=1, size=10)
-for actor in result.list_data:
-    print(f"Actor: {actor.id}")
-```
+**SDK:** See `references/advanced-operations.md` for SDK examples.
 
 For additional event operations (list sessions, delete event), see `references/advanced-operations.md`.
 
@@ -285,22 +262,7 @@ curl "https://agentbase.api.vngcloud.vn/memory/memories/mem_abc123/memory-record
   -H "Authorization: Bearer $TOKEN"
 ```
 
-**SDK:**
-```python
-from greennode_agentbase.memory import MemoryClient
-
-client = MemoryClient()
-
-import asyncio
-records = asyncio.run(
-    client.listMemoryRecords_async(
-        id="mem_abc123",
-        namespace="/strategies/strat_1/actors/user-1",
-    )
-)
-for record in records:
-    print(f"[{record.id}] {record.memory} (score: {record.score})")
-```
+**SDK:** See `references/advanced-operations.md` for SDK examples.
 
 ---
 

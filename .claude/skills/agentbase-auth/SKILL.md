@@ -1,7 +1,8 @@
 ---
 name: agentbase-auth
-description: Configure GreenNode AgentBase outbound authentication (secrets for external services). Use when user wants to store an API key or secret for their agent, connect an agent to external APIs (e.g. OpenAI, Google), set up bring-your-own-key flows, configure OAuth2 providers, manage delegated keys, or retrieve stored credentials at runtime. DO NOT use for registering the agent itself on the platform — use /agentbase-identity instead.
+description: Configure GreenNode AgentBase outbound authentication (secrets for external services). Use when user wants to store an API key or secret for their agent, connect an agent to external APIs (e.g. OpenAI, Google), set up bring-your-own-key flows, configure OAuth2 providers, manage delegated keys, or retrieve stored credentials at runtime. Also trigger when user says "add API key to my agent", "connect my agent to OpenAI", "store secret for agent", "agent needs to call external API", "set up outbound auth", "manage agent secrets", or wants their agent to securely access third-party services. Requires an agent identity (created via /agentbase-identity) for retrieving secrets. DO NOT use for registering the agent itself on the platform — use /agentbase-identity instead. DO NOT use for GreenNode AI Platform API keys — use /aip instead.
 argument-hint: <apikey|delegated|oauth2> <create|list|get|update|delete> [name]
+user-invocable: true
 ---
 
 # AgentBase Outbound Authentication
@@ -229,29 +230,7 @@ curl -X DELETE "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/
 ```
 
 ### delegated request-key [providerName] [agentIdentityName]
-Request a delegated API key (triggers user-federation flow).
-
-- **API**: `POST /api/v1/outbound-auth/delegated-api-key-providers/{providerName}/agent-identities/{agentIdentityName}/api-key`
-- **Body**: `{"agentUserId": "...", "returnUrl": "...", "customState": "...", "forceDelegation": false}`
-
-**SDK**:
-```python
-from greennode_agentbase.identity import GetDelegatedApiKeyRequest
-
-result = await client.get_delegated_api_key_for_agent_identity_async(
-    provider_name="user-openai-key",
-    agent_identity_name="my-agent",
-    request=GetDelegatedApiKeyRequest(
-        agent_user_id="user-123",
-        return_url="https://myapp.com/callback",
-    ),
-)
-# result.apikey - the key if already authorized
-# result.authorization_url - URL to redirect user for consent
-# result.status - IN_PROGRESS, COMPLETED, or FAILED
-```
-
-For decorator usage examples (`@requires_api_key` with `USER_FEDERATION` flow), see `references/usage.md`.
+Request a delegated API key (triggers user-federation flow). For full API details, SDK examples, and decorator usage (`@requires_api_key` with `USER_FEDERATION` flow), see `references/usage.md`.
 
 ---
 
@@ -379,49 +358,10 @@ curl -X DELETE "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/
 ```
 
 ### oauth2 m2m-token [providerName] [agentIdentityName]
-Get a machine-to-machine (M2M) OAuth2 token using client credentials flow.
-
-- **API**: `POST /api/v1/outbound-auth/oauth2-providers/{providerName}/agent-identities/{agentIdentityName}/tokens/m2m`
-- **Body**: `{"scopes": ["read", "write"]}`
-
-**SDK**:
-```python
-from greennode_agentbase.identity import GetM2mTokenRequest
-
-result = await client.get_m2m_token_async(
-    provider_name="google-oauth",
-    agent_identity_name="my-agent",
-    request=GetM2mTokenRequest(scopes=["https://www.googleapis.com/auth/calendar.readonly"]),
-)
-print(f"Access Token: {result.access_token}")
-print(f"Token Type: {result.token_type}")
-```
+Get a machine-to-machine (M2M) OAuth2 token using client credentials flow. For full API details, SDK examples, and decorator usage (`@requires_access_token`), see `references/usage.md`.
 
 ### oauth2 3lo-token [providerName] [agentIdentityName]
-Get a 3-legged OAuth (3LO) token via user authorization flow.
-
-- **API**: `POST /api/v1/outbound-auth/oauth2-providers/{providerName}/agent-identities/{agentIdentityName}/tokens/3lo`
-- **Body**: `{"agentUserId": "...", "scopes": [...], "returnUrl": "...", "forceAuthentication": false}`
-
-**SDK**:
-```python
-from greennode_agentbase.identity import ThreeLoTokenRequest
-
-result = await client.get_3lo_token_async(
-    provider_name="google-oauth",
-    agent_identity_name="my-agent",
-    request=ThreeLoTokenRequest(
-        agent_user_id="user-123",
-        scopes=["openid", "email"],
-        return_url="https://myapp.com/callback",
-    ),
-)
-# result.access_token - if user already authorized
-# result.authorization_url - if user needs to authorize (redirect user here)
-# result.session_id - for polling until authorization completes
-```
-
-For decorator usage examples (`@requires_access_token` for M2M and 3LO flows), see `references/usage.md`.
+Get a 3-legged OAuth (3LO) token via user authorization flow. For full API details, SDK examples, and decorator usage (`@requires_access_token`), see `references/usage.md`.
 
 ---
 

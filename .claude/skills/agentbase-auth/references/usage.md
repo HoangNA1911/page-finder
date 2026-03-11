@@ -1,4 +1,76 @@
-# AgentBase Auth — Decorator Usage Examples
+# AgentBase Auth — Advanced Operations & Decorator Usage
+
+## Advanced Operations
+
+### delegated request-key [providerName] [agentIdentityName]
+Request a delegated API key (triggers user-federation flow).
+
+- **API**: `POST /api/v1/outbound-auth/delegated-api-key-providers/{providerName}/agent-identities/{agentIdentityName}/api-key`
+- **Body**: `{"agentUserId": "...", "returnUrl": "...", "customState": "...", "forceDelegation": false}`
+
+**SDK**:
+```python
+from greennode_agentbase.identity import GetDelegatedApiKeyRequest
+
+result = await client.get_delegated_api_key_for_agent_identity_async(
+    provider_name="user-openai-key",
+    agent_identity_name="my-agent",
+    request=GetDelegatedApiKeyRequest(
+        agent_user_id="user-123",
+        return_url="https://myapp.com/callback",
+    ),
+)
+# result.apikey - the key if already authorized
+# result.authorization_url - URL to redirect user for consent
+# result.status - IN_PROGRESS, COMPLETED, or FAILED
+```
+
+### oauth2 m2m-token [providerName] [agentIdentityName]
+Get a machine-to-machine (M2M) OAuth2 token using client credentials flow.
+
+- **API**: `POST /api/v1/outbound-auth/oauth2-providers/{providerName}/agent-identities/{agentIdentityName}/tokens/m2m`
+- **Body**: `{"scopes": ["read", "write"]}`
+
+**SDK**:
+```python
+from greennode_agentbase.identity import GetM2mTokenRequest
+
+result = await client.get_m2m_token_async(
+    provider_name="google-oauth",
+    agent_identity_name="my-agent",
+    request=GetM2mTokenRequest(scopes=["https://www.googleapis.com/auth/calendar.readonly"]),
+)
+print(f"Access Token: {result.access_token}")
+print(f"Token Type: {result.token_type}")
+```
+
+### oauth2 3lo-token [providerName] [agentIdentityName]
+Get a 3-legged OAuth (3LO) token via user authorization flow.
+
+- **API**: `POST /api/v1/outbound-auth/oauth2-providers/{providerName}/agent-identities/{agentIdentityName}/tokens/3lo`
+- **Body**: `{"agentUserId": "...", "scopes": [...], "returnUrl": "...", "forceAuthentication": false}`
+
+**SDK**:
+```python
+from greennode_agentbase.identity import ThreeLoTokenRequest
+
+result = await client.get_3lo_token_async(
+    provider_name="google-oauth",
+    agent_identity_name="my-agent",
+    request=ThreeLoTokenRequest(
+        agent_user_id="user-123",
+        scopes=["openid", "email"],
+        return_url="https://myapp.com/callback",
+    ),
+)
+# result.access_token - if user already authorized
+# result.authorization_url - if user needs to authorize (redirect user here)
+# result.session_id - for polling until authorization completes
+```
+
+---
+
+## Decorator Usage Examples
 
 ## Static API Key (`@requires_api_key` with M2M flow)
 

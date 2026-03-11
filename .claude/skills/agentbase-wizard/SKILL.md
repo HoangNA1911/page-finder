@@ -1,8 +1,8 @@
 ---
 name: agentbase-wizard
-description: "START HERE if you're new to GreenNode AgentBase. Guided full lifecycle wizard for creating AI agents on GreenNode AgentBase. Use when user is new to the platform, wants step-by-step guidance from zero to deployed agent, or says 'help me create an agent'. Covers: setup, scaffold, LLM, memory, identity, auth, code, test, deploy, verify. DO NOT use if user wants to perform a specific operation (use the dedicated skill instead)."
+description: START HERE if you're new to GreenNode AgentBase. Guided full lifecycle wizard for creating AI agents on GreenNode AgentBase. Use when user is new to the platform, wants step-by-step guidance from zero to deployed agent, says 'help me create an agent', is a beginner, or wants the full guided experience. Also trigger when user says 'getting started', 'I'm new to AgentBase', 'walk me through it', 'create my first agent', 'full setup guide', 'how do I build an agent from scratch', 'guide me', or seems unfamiliar with the platform and needs hand-holding through the entire process. Covers: setup, scaffold, LLM, memory, identity, auth, code, test, deploy, verify. DO NOT use if user wants to perform a specific operation (use the dedicated skill instead).
 user-invocable: true
-argument-hint: "[resume|step-N|reset]"
+argument-hint: [resume|step-N|reset]
 ---
 
 # AgentBase Wizard - Full Lifecycle Guide

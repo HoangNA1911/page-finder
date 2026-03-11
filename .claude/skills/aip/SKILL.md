@@ -1,7 +1,8 @@
 ---
 name: aip
-description: Manage GreenNode AI Platform API keys and LLM models (MAAS). Use when user wants to create/list/delete API keys for AI Platform, browse available LLM models, check model rate limits, get an OpenAI-compatible endpoint and key for their AI agent, or find out which models are available on GreenNode. Also trigger when user mentions "AI Platform", "MAAS", "GreenNode LLM", "GreenNode model", or wants to set up LLM access for their agent. DO NOT use for AgentBase runtime management (use /agentbase-runtime) or agent identity registration (use /agentbase-identity).
+description: Manage GreenNode AI Platform API keys and LLM models (MAAS). Use when user wants to create/list/delete API keys for AI Platform, browse available LLM models, check model rate limits, get an OpenAI-compatible endpoint and key for their AI agent, or find out which models are available on GreenNode. Also trigger when user mentions "AI Platform", "MAAS", "GreenNode LLM", "GreenNode model", "LLM key", "model access", "which models can I use", "get API key for LLM", "set up model access", or wants to set up LLM access for their agent. Trigger for any question about available AI models, model pricing, or getting an OpenAI-compatible key on GreenNode. DO NOT use for AgentBase runtime management (use /agentbase-runtime) or agent identity registration (use /agentbase-identity).
 argument-hint: <api-keys|models> <list|create|get|delete> [name-or-uuid]
+user-invocable: true
 ---
 
 # GreenNode AI Platform — API Keys & LLM Models

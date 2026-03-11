@@ -5,9 +5,12 @@ description: >
   vCR, GreenNode container registry, Docker registry on GreenNode, or wants to create/list/delete Docker
   repositories, manage registry credentials (robot accounts), push/pull images on vcr.vngcloud.vn,
   list images or artifacts in a vCR repository, or set up Docker login credentials for GreenNode. Also trigger
-  when user mentions "container registry" in the context of GreenNode or VNG infrastructure. Do NOT trigger
-  for general Docker questions unrelated to GreenNode or vCR.
+  when user mentions "container registry" in the context of GreenNode or VNG infrastructure, says "push image
+  to GreenNode", "docker login vCR", "create docker repo", "list my images", "manage container repository",
+  or needs to work with Docker images on the GreenNode platform. Do NOT trigger for general Docker questions
+  unrelated to GreenNode or vCR.
 argument-hint: <repos|robot-accounts|images|artifacts> [repo-name]
+user-invocable: true
 ---
 
 # GreenNode Container Registry (vCR) Skill

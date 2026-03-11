@@ -1,8 +1,8 @@
 ---
 name: agentbase-test
-description: "Test and validate GreenNode AgentBase agents locally. Use when user wants to test their agent before deploying, run a smoke test, do a pre-deploy check, verify agent works, sanity check, validate code meets runtime contract, run Docker locally, or check integration readiness. DO NOT use for deploying (use /agentbase-deploy) or monitoring deployed agents (use /agentbase-observe)."
+description: Test and validate GreenNode AgentBase agents locally. Use when user wants to test their agent before deploying, run a smoke test, do a pre-deploy check, verify agent works, sanity check, does my agent work, validate code meets runtime contract, run Docker locally, try it locally first, or check integration readiness. Also trigger when user says 'test my agent', 'run locally', 'check if it works', 'validate before deploy', 'preflight check', 'dry run my agent', or wants to verify their agent code is correct before shipping. DO NOT use for deploying (use /agentbase-deploy) or monitoring deployed agents (use /agentbase-observe).
 user-invocable: true
-argument-hint: "[validate|local|docker|preflight]"
+argument-hint: [validate|local|docker|preflight]
 ---
 
 # AgentBase Test

@@ -1,7 +1,8 @@
 ---
 name: agentbase-identity
-description: Manage GreenNode AgentBase agent identities. Use when user wants to register an agent on the platform, create or list agent identities, or CRUD agent identity records on AgentBase. DO NOT use for outbound API keys, OAuth2 providers, or external service credentials — use /agentbase-auth instead.
+description: Manage GreenNode AgentBase agent identities. Use when user wants to register an agent on the platform, create or list agent identities, give an agent a name and profile, update agent metadata, delete an agent registration, or CRUD agent identity records on AgentBase. Agent identity is a prerequisite for retrieving secrets (API keys, OAuth2 tokens, delegated keys) — all auth retrieval APIs require an agent identity name. Also trigger when user says "register my agent", "agent registration", "create agent profile", "who is my agent", "list my agents on the platform", or wants to manage how their agent is known to the platform. To manage the auth providers themselves (create/store API keys, configure OAuth2), use /agentbase-auth. DO NOT use for creating agent source code — use /agentbase-init instead.
 argument-hint: <create|list|get|update|delete> [name]
+user-invocable: true
 ---
 
 # AgentBase Identity Management
@@ -180,6 +181,17 @@ curl -X DELETE https://agentbase.api.vngcloud.vn/identity/api/v1/agent-identitie
 - `allowed_return_urls` (list[str], optional) - OAuth2 callback URLs
 - `created_at` (datetime)
 - `updated_at` (datetime)
+
+## Relationship with Auth (Secrets Retrieval)
+
+Agent identity is a **required prerequisite** for retrieving secrets from auth providers. All secret retrieval APIs require an `agentIdentityName` parameter:
+
+- `GET /outbound-auth/api-key-providers/{providerName}/agent-identities/{agentName}/api-key` — retrieve stored API key
+- `POST /outbound-auth/delegated-api-key-providers/{providerName}/agent-identities/{agentName}/api-key` — request delegated key
+- `POST /outbound-auth/oauth2-providers/{providerName}/agent-identities/{agentName}/tokens/m2m` — get M2M token
+- `POST /outbound-auth/oauth2-providers/{providerName}/agent-identities/{agentName}/tokens/3lo` — get 3LO token
+
+**Workflow**: Create an agent identity first (this skill), then create auth providers and retrieve secrets using that identity (`/agentbase-auth`).
 
 ## Runtime Auto-Injection
 

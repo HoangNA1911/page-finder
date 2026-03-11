@@ -1,5 +1,54 @@
 # Advanced Memory Operations
 
+## Event SDK Examples
+
+### List Events (SDK)
+
+```python
+result = await client.listEvents_async(
+    id="mem_abc123", actorId="user-1", sessionId="session-1", page=1, size=20
+)
+for event in result.list_data:
+    print(f"[{event.role}] {event.content}")
+```
+
+### Create Event (SDK)
+
+```python
+from greennode_agentbase.memory.models import EventCreateRequest, ChatMessage
+
+request = EventCreateRequest(
+    payload=ChatMessage(role="user", content="What is the weather in Saigon?")
+)
+await client.createEvent_async(
+    id="mem_abc123", actorId="user-1", sessionId="session-1", request=request
+)
+```
+
+> **Note**: The SDK uses `ChatMessage(role=..., content=...)` which maps to the API's `EventPayload(type=..., role=..., message=...)`. The SDK handles the field mapping automatically.
+
+---
+
+## Browse Memory Records (SDK)
+
+```python
+from greennode_agentbase.memory import MemoryClient
+
+client = MemoryClient()
+
+import asyncio
+records = asyncio.run(
+    client.listMemoryRecords_async(
+        id="mem_abc123",
+        namespace="/strategies/strat_1/actors/user-1",
+    )
+)
+for record in records:
+    print(f"[{record.id}] {record.memory} (score: {record.score})")
+```
+
+---
+
 ## Generate Memory Records from Content (ad-hoc messages)
 
 **API:** `POST /memories/{memoryId}/memory-records:generate-from-content?longTermMemoryStrategyId=...&actorId=...&sessionId=...`

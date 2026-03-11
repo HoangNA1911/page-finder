@@ -1,7 +1,8 @@
 ---
 name: agentbase-init
-description: Scaffold a new GreenNode AgentBase agent project from scratch. Use when user wants to generate boilerplate source code, create project files (main.py, Dockerfile, requirements.txt, .greennode.json), bootstrap a new agent codebase, or set up a starter template with optional LangChain or LangGraph integration. DO NOT use for registering the agent on the platform (use /agentbase-identity) or deploying existing code (use /agentbase-deploy).
+description: Scaffold a new GreenNode AgentBase agent project from scratch. Use when user wants to generate boilerplate source code, create project files (main.py, Dockerfile, requirements.txt, .greennode.json), bootstrap a new agent codebase, start a new agent project, create an agent from scratch, set up a starter template with optional LangChain or LangGraph integration, or needs a project skeleton for their AI agent. Also trigger when user says "new agent project", "create agent boilerplate", "init agent", "scaffold agent", "start fresh agent", or "set up agent code". DO NOT use for registering the agent on the platform (use /agentbase-identity) or deploying existing code (use /agentbase-deploy).
 argument-hint: [project-name] [--langchain|--langgraph]
+user-invocable: true
 ---
 
 # Scaffold a New GreenNode AgentBase Agent Project

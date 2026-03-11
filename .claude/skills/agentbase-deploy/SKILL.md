@@ -1,7 +1,8 @@
 ---
 name: agentbase-deploy
-description: Deploy an agent to GreenNode AgentBase Runtime (end-to-end workflow). Use when user wants to ship, release, publish, or make their agent live. This skill handles the full pipeline: build Docker image, push to registry, create or update runtime, and verify deployment. DO NOT use for managing existing runtimes, endpoints, or versions without deploying new code — use /agentbase-runtime instead.
+description: Deploy an agent to GreenNode AgentBase Runtime (end-to-end workflow). Use when user wants to ship, release, publish, push to production, go live, or make their agent live. This skill handles the full pipeline: build Docker image, push to registry, create or update runtime, and verify deployment. Also trigger when user says "deploy my agent", "ship it", "put my agent online", "deploy to GreenNode", "release new version", "push my agent to production", or wants the complete build-and-deploy workflow. DO NOT use for managing existing runtimes, endpoints, or versions without deploying new code — use /agentbase-runtime instead.
 argument-hint: [runtime-name]
+user-invocable: true
 ---
 
 # AgentBase Deploy Workflow

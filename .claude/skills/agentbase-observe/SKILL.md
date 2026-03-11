@@ -1,7 +1,8 @@
 ---
 name: agentbase-observe
-description: Monitor and debug GreenNode AgentBase agents. View runtime logs, endpoint logs, and resource metrics (CPU/RAM). Use when user wants to check agent logs, view stdout/stderr output, debug a running agent, why is my agent failing, check errors, agent not working, debug deployed agent, view output, view CPU/memory metrics, monitor performance, troubleshoot errors, or inspect what their agent is doing on AgentBase. DO NOT use for managing runtime lifecycle (create/update/delete) — use /agentbase-runtime instead.
+description: Monitor and debug GreenNode AgentBase agents. View runtime logs, endpoint logs, and resource metrics (CPU/RAM). Use when user wants to check agent logs, view stdout/stderr output, debug a running agent, why is my agent failing, check errors, agent not working, agent returning 500, debug deployed agent, view output, view CPU/memory metrics, monitor performance, troubleshoot errors, check resource usage, or inspect what their agent is doing on AgentBase. Also trigger when user says "show me logs", "what's wrong with my agent", "agent crashed", "check if agent is running", "tail logs", "agent is slow", or any debugging/monitoring scenario for a deployed agent. DO NOT use for managing runtime lifecycle (create/update/delete) — use /agentbase-runtime instead.
 argument-hint: <runtime-logs|endpoint-logs|metrics> [runtime-id] [endpoint-id]
+user-invocable: true
 ---
 
 # AgentBase Observability
@@ -22,7 +23,7 @@ Read the shared auth setup reference at `/agentbase` skill's `references/auth-se
 ## Interaction Guidelines
 
 - **Guide first, act only when asked** — if the user asks "how to" view logs or metrics, respond with instructions and guidance only. Do NOT execute API calls unless they explicitly ask you to do it for them.
-- **Confirm before executing (HARD GATE)** — before fetching logs or metrics, present a summary of what will be queried (runtime ID, endpoint ID, log offset/limit) and ask the user to confirm. Do NOT auto-execute. Only proceed when the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, or ambiguous text), treat it as adjustment input — update the summary and re-present for confirmation again. NEVER interpret a non-confirmation response as approval.
+- **Read-only operations proceed directly** — for log and metric queries (runtime-logs, endpoint-logs, metrics), proceed directly once you have the required IDs. Ask the user to clarify only if the runtime ID or endpoint ID is ambiguous (e.g., multiple runtimes exist and the user hasn't specified which one).
 - **Never auto-decide parameters** — when an action requires parameters (e.g., runtime ID, endpoint ID, log offset, limit), always ask the user for each required value. You may recommend sensible defaults (e.g., limit=100), but never auto-select or impose values without the user's explicit agreement.
 - **Present options, let user choose** — when there are multiple runtimes or endpoints to choose from, list them and let the user pick. Do not make the choice for them.
 

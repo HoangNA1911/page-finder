@@ -1,7 +1,8 @@
 ---
 name: agentbase-runtime
-description: Manage GreenNode AgentBase agent runtimes (CRUD operations). Use when user wants to create a runtime from an existing image, list, inspect, update, or delete existing runtimes, manage endpoints and versions, set up canary deployments, check deployment status, configure autoscaling, or list available flavors. DO NOT use for the full build-push-deploy workflow (use /agentbase-deploy) or for viewing logs and metrics (use /agentbase-observe).
+description: Manage GreenNode AgentBase agent runtimes (CRUD operations). Use when user wants to create a runtime from an existing image, list, inspect, update, or delete existing runtimes, manage endpoints and versions, set up canary deployments, check deployment status, configure autoscaling, scale up/down, change compute flavor, resize agent resources, or list available flavors. Also trigger when user says "list my runtimes", "check runtime status", "delete runtime", "update endpoint", "add canary", "what flavors are available", or wants to manage an already-deployed agent's infrastructure without rebuilding. DO NOT use for the full build-push-deploy workflow (use /agentbase-deploy) or for viewing logs and metrics (use /agentbase-observe).
 argument-hint: <create|list|get|update|delete|endpoints|versions|status> [id-or-name]
+user-invocable: true
 ---
 
 # AgentBase Runtime Management
