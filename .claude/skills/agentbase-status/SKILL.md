@@ -1,6 +1,6 @@
 ---
 name: agentbase-status
-description: Show dashboard of all platform resources and deployed agents. Use when user wants to see an overview of their resources, check what's deployed, show all agents, get a status summary across all services (identities, runtimes, memory, auth, registry, models), or wants a bird's-eye view of their setup. Also trigger when user says 'status', 'dashboard', 'overview', 'show everything', 'what do I have', 'list all resources', 'check what's deployed', 'show my agents', 'inventory', 'summarize my setup', or wants to quickly see everything they have on the platform at once. DO NOT use for managing specific resources (use the dedicated skill instead).
+description: Show dashboard of all platform resources and deployed agents. Use when user wants to see an overview of their resources, check what's deployed, show all agents, get a status summary across all services (identities, runtimes, memory, auth, registry, models), or wants a bird's-eye view of their setup. Also trigger when user says 'agent status', 'platform status', 'show dashboard', 'dashboard', 'platform overview', 'show everything', 'what do I have', 'list all resources', 'check what is deployed', 'show my agents', 'inventory', 'summarize my setup', or wants to quickly see everything they have on the platform at once. DO NOT use for managing specific resources (use the dedicated skill instead). DO NOT trigger for generic 'status' without platform context — only trigger when the intent is clearly about platform/agent resource overview.
 argument-hint: [--json]
 user-invocable: true
 ---
@@ -99,6 +99,7 @@ If the user passes `--json`, output the raw JSON responses from all APIs as a si
 - **Present results in a clear dashboard format** — use the structured output format above, grouping by service.
 - **Offer to drill into specific resources** — after showing the dashboard, ask the user if they want more detail on any section (e.g., "Would you like to see more details on a specific runtime or memory?").
 - **Handle errors gracefully** — if any individual API call fails, show that section as an error rather than failing the entire dashboard.
+- **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
 
 ## Pagination
 

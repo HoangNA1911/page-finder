@@ -6,8 +6,9 @@ description: >
   list images or artifacts in a repository, or prepare container images for deployment. Also trigger when user
   says "create docker repo", "push my image", "docker registry", "push image", "list my images",
   "manage container repository", "set up registry", "docker login", "container registry", "build and push",
-  or needs to work with Docker images as part of the agent deployment pipeline. Do NOT trigger for general
-  Docker questions unrelated to agent deployment or the platform registry.
+  or needs to work with Docker images as part of the agent deployment pipeline. DO NOT use for the full
+  build-push-deploy workflow (use /agentbase-deploy instead). Do NOT trigger for general Docker questions
+  unrelated to agent deployment or the platform registry.
 argument-hint: <repos|robot-accounts|images|artifacts> [repo-name]
 user-invocable: true
 ---
@@ -33,6 +34,7 @@ Read the shared auth setup reference at `/agentbase` skill's `references/auth-se
 - **When creating robot accounts, always ask about permissions.** Never create a robot account without confirming which permissions the user wants.
 - **Handle errors gracefully** — if an API call returns 401, remind the user to check their IAM token; if 500, suggest retrying.
 - **Dry-run support**: When user requests `--dry-run` or preview, show the exact API request (method, URL, headers, payload) and explain the expected outcome WITHOUT executing. Let user review before proceeding.
+- **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
 
 ## API Basics
 

@@ -1,6 +1,6 @@
 ---
 name: agentbase-test
-description: Test and validate AI agents locally before deployment. ALWAYS use this skill when the user asks to test, debug, try, verify, or check if their agent works — even as part of a larger request ("build and test", "after finishing, test it", "ensure the agent works correctly", "then test and debug"). Trigger phrases: "test my agent", "run my agent locally", "does my agent work", "check if it works", "try it out", "validate before deploy", "preflight check", "test it", "run a test", "dry run", "debug my agent locally", "make sure it works", "sanity check", "smoke test". DO NOT use for deploying (use /agentbase-deploy) or monitoring deployed agents (use /agentbase-observe).
+description: Test and validate AI agents locally before deployment. This skill is for LOCAL/pre-deploy testing only. ALWAYS use this skill when the user asks to test, debug, try, verify, or check if their agent works locally — even as part of a larger request ("build and test", "after finishing, test it", "ensure the agent works correctly", "then test and debug"). Trigger phrases: "test my agent", "run my agent locally", "does my agent work", "check if it works", "try it out", "validate before deploy", "preflight check", "test it", "run a test", "dry run", "debug my agent locally", "make sure it works", "sanity check", "smoke test". DO NOT use for deploying (use /agentbase-deploy). DO NOT use for debugging or monitoring already-deployed agents in production — use /agentbase-observe instead.
 user-invocable: true
 argument-hint: [validate|local|docker|preflight]
 ---
@@ -21,6 +21,7 @@ Test and validate GreenNode AgentBase agents before deployment.
 - **IMPORTANT:** Before constructing any API URL, read `/agentbase` skill's `references/endpoints.md` for the domain validation whitelist. Only use domains listed there.
 - **If all tests pass**, suggest the next step: `/agentbase-deploy`.
 - **Support `--dry-run`**: show what would be tested without actually running anything.
+- **Always read full API response body** — when calling platform APIs (e.g., preflight checks), capture and read the full JSON response (not just status codes) for accurate error handling and debugging.
 
 ---
 

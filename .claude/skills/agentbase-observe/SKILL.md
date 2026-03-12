@@ -1,6 +1,6 @@
 ---
 name: agentbase-observe
-description: Monitor, debug, and view logs for deployed AI agents. View runtime logs, endpoint logs, and resource metrics (CPU/RAM). Use when user wants to check logs, view agent output, debug a running agent, troubleshoot errors, see why the agent is failing, check if the agent is running, monitor performance, view CPU/memory usage, or inspect what their deployed agent is doing. Also trigger when user says "show logs", "view logs", "check logs", "what's wrong with my agent", "agent crashed", "agent not working", "agent returning 500", "debug my agent", "check if agent is running", "tail logs", "agent is slow", "why is it failing", or any debugging/monitoring scenario for a deployed agent. DO NOT use for managing runtime lifecycle (create/update/delete) — use /agentbase-runtime instead.
+description: Monitor, debug, and view logs for DEPLOYED (production) AI agents. View runtime logs, endpoint logs, and resource metrics (CPU/RAM). Use when user wants to check logs, view agent output, debug a running/deployed agent, troubleshoot production errors, see why a deployed agent is failing, check if the agent is running in production, monitor performance, view CPU/memory usage, or inspect what their deployed agent is doing. Also trigger when user says "show logs", "view logs", "check logs", "what's wrong with my agent", "agent crashed", "agent not working", "agent returning 500", "debug my deployed agent", "check if agent is running", "tail logs", "agent is slow", "why is it failing", or any debugging/monitoring scenario for an already-deployed agent. DO NOT use for managing runtime lifecycle (create/update/delete) — use /agentbase-runtime instead. DO NOT use for local testing or pre-deploy validation — use /agentbase-test instead.
 argument-hint: <runtime-logs|endpoint-logs|metrics> [runtime-id] [endpoint-id]
 user-invocable: true
 ---
@@ -26,6 +26,7 @@ Read the shared auth setup reference at `/agentbase` skill's `references/auth-se
 - **Read-only operations proceed directly** — for log and metric queries (runtime-logs, endpoint-logs, metrics), proceed directly once you have the required IDs. Ask the user to clarify only if the runtime ID or endpoint ID is ambiguous (e.g., multiple runtimes exist and the user hasn't specified which one).
 - **Never auto-decide parameters** — when an action requires parameters (e.g., runtime ID, endpoint ID, log offset, limit), always ask the user for each required value. You may recommend sensible defaults (e.g., limit=100), but never auto-select or impose values without the user's explicit agreement.
 - **Present options, let user choose** — when there are multiple runtimes or endpoints to choose from, list them and let the user pick. Do not make the choice for them.
+- **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
 
 ## Operations
 

@@ -17,6 +17,7 @@ Full end-to-end deployment of an agent to GreenNode AgentBase Runtime.
 - **Never auto-decide parameters** — when a step requires parameters (e.g., runtime name, image tag, platform, flavor, registry credentials), always ask the user for each required value. You may recommend sensible defaults or options, but never auto-select or impose values without the user's explicit agreement.
 - **Present options, let user choose** — when there are multiple choices (e.g., build platform, compute flavor, registry auth method), list the available options and let the user pick. Do not make the choice for them.
 - **Dry-run support**: When user requests `--dry-run` or preview, show the exact API request (method, URL, headers, payload) and explain the expected outcome WITHOUT executing. Let user review before proceeding.
+- **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
 
 ## Prerequisites
 

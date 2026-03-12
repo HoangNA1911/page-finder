@@ -27,6 +27,7 @@ Read the shared auth setup reference at `/agentbase` skill's `references/auth-se
 - **Never auto-decide parameters** — when an action requires parameters (e.g., identity name, description, allowedReturnUrls), always ask the user for each required value. You may recommend sensible defaults or examples, but never auto-select or impose values without the user's explicit agreement.
 - **Present options, let user choose** — when there are multiple choices, list the available options and let the user pick. Do not make the choice for them.
 - **Dry-run support**: When user requests `--dry-run` or preview, show the exact API request (method, URL, headers, payload) and explain the expected outcome WITHOUT executing. Let user review before proceeding.
+- **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
 
 ## Operations
 

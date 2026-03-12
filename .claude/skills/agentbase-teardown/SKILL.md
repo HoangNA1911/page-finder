@@ -25,6 +25,7 @@ Read the shared auth setup reference at `/agentbase` skill's `references/auth-se
 - **Let user deselect items** — after presenting the plan, let the user choose which items to keep (e.g., "keep the AIP key, delete everything else")
 - **Warn about shared resources** — if a resource may be used by other agents (e.g., an AIP API key, an auth provider), explicitly warn the user (e.g., "This AIP key may be used by other agents")
 - **Show progress during deletion** — report each deletion as it completes
+- **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
 
 ---
 
