@@ -38,9 +38,13 @@ Fetch logs from an agent runtime container.
 
 **Body** (`LogSearchRequest`):
 - `from` (int, max 5000) -- starting offset (0-based)
-- `limit` (int, max 1000) -- number of log lines to return
+- `limit` (int, recommended max 500) -- number of log lines to return
+- `fromTimestamp` (string, optional) -- start of time range filter (ISO 8601)
+- `toTimestamp` (string, optional) -- end of time range filter (ISO 8601)
+- `query` (string, optional) -- keyword search filter
+- `order` (string, optional) -- log ordering
 
-**Response** (`LogSearchResult`): `totalCount` (int), `logs` (array of log entries).
+**Response** (`LogSearchResult`): `totalCount` (int), `logs` (array of `LogRecord` with `timestamp` (string) and `content` (string)).
 
 > **Note**: Runtime Service pagination is **1-indexed** (first page = `page=1`).
 
@@ -53,14 +57,28 @@ curl -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_
     "from": 0,
     "limit": 100
   }'
+
+# With time range and keyword search
+curl -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/logs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 0,
+    "limit": 100,
+    "fromTimestamp": "2026-03-13T00:00:00Z",
+    "toTimestamp": "2026-03-13T12:00:00Z",
+    "query": "error"
+  }'
 ```
 
 *SDK: No dedicated SDK method for logs. Use curl.*
 
 **Tips**:
 - Use `from` to paginate through large log sets (e.g. `"from": 100` to skip first 100 entries)
-- Max `limit` is 1000, max `from` is 5000
-- Grep the response for errors locally if needed
+- Recommended max `limit` is 500, max `from` is 5000
+- Use `query` to filter logs by keyword server-side (e.g. `"query": "error"`)
+- Use `fromTimestamp`/`toTimestamp` to narrow logs to a specific time window
+- Each log entry has `timestamp` and `content` fields
 
 ---
 
@@ -70,7 +88,7 @@ Fetch logs from a specific endpoint within a runtime.
 
 **API**: `POST /agent-runtimes/{id}/endpoints/{endpointId}/logs`
 
-**Body**: Same as runtime-logs (`from`, `limit`).
+**Body**: Same as runtime-logs (`from`, `limit`, `fromTimestamp`, `toTimestamp`, `query`, `order`).
 
 **curl**:
 ```bash
@@ -89,19 +107,30 @@ curl -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_
 
 ### metrics [id] [endpointId] -- View endpoint resource metrics
 
-Get CPU and RAM usage metrics for a specific endpoint.
+Get CPU and RAM usage metrics for a specific endpoint. Supports historical time range queries.
 
 **API**: `GET /agent-runtimes/{id}/endpoints/{endpointId}/metrics`
 
+**Query parameters**:
+- `fromTimestamp` (string, optional) -- start of time range (ISO 8601)
+- `toTimestamp` (string, optional) -- end of time range (ISO 8601)
+
 **curl**:
 ```bash
+# Current metrics
 curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints/$ENDPOINT_ID/metrics" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Historical metrics with time range
+curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints/$ENDPOINT_ID/metrics?fromTimestamp=2026-03-13T00:00:00Z&toTimestamp=2026-03-13T12:00:00Z" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 *SDK: No dedicated SDK method for metrics. Use curl.*
 
-**Response fields** (`AgentRuntimeEndpointMetrics`): `cpuCores` (double), `memoryBytes` (int64).
+**Response** (`AgentRuntimeEndpointMetrics`):
+- `cpuCoresUsage` -- array of `{timestamp (date-time), value (double)}` data points
+- `memoryBytesUsage` -- array of `{timestamp (date-time), value (int64)}` data points
 
 ---
 
@@ -110,9 +139,9 @@ curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/en
 | Feature | Status |
 |---------|--------|
 | Log filtering by level (INFO/WARN/ERROR) | Not supported — all log levels are returned together |
-| Log time range filter | Not supported — only offset-based pagination (`from`/`limit`) |
-| Log keyword search | Not supported — grep results locally after fetching |
-| Historical metrics | Not supported — metrics are point-in-time only |
+| Log time range filter | Supported — use `fromTimestamp`/`toTimestamp` in request body |
+| Log keyword search | Supported — use `query` field in request body |
+| Historical metrics | Supported — use `fromTimestamp`/`toTimestamp` query params |
 | Log streaming/tailing | Not supported — use polling as a workaround (see below) |
 | Alerting/thresholds | Not supported |
 
@@ -124,7 +153,7 @@ while true; do
     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     -d "{\"from\": $OFFSET, \"limit\": 50}")
   COUNT=$(echo "$RESULT" | jq '.totalCount')
-  echo "$RESULT" | jq -r '.logs[]'
+  echo "$RESULT" | jq -r '.logs[].content'
   OFFSET=$COUNT
   sleep 5
 done
@@ -189,22 +218,29 @@ Agent is slow?
 - **Both high** → Resource exhaustion — scale up the flavor or optimize both code paths
 - **Both low + slow responses** → External dependency bottleneck (LLM API latency, database queries, network timeouts)
 
-### Local Log Filtering Workarounds
+### Log Filtering
 
-Since the API doesn't support server-side filtering, use these client-side techniques after fetching logs:
+Use server-side filtering when possible, and client-side techniques for finer control:
 
 ```bash
-# Filter for errors only
-echo "$LOGS" | jq -r '.logs[]' | grep -i "error\|traceback\|exception\|failed"
+# Server-side: keyword search via query field
+curl -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/logs" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"from": 0, "limit": 100, "query": "error"}'
 
-# Filter for a specific keyword
-echo "$LOGS" | jq -r '.logs[]' | grep -i "your-keyword"
+# Server-side: time range filter
+curl -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/logs" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"from": 0, "limit": 100, "fromTimestamp": "2026-03-13T00:00:00Z", "toTimestamp": "2026-03-13T12:00:00Z"}'
 
-# Show only the last N lines
-echo "$LOGS" | jq -r '.logs[]' | tail -20
+# Client-side: filter fetched results locally
+echo "$LOGS" | jq -r '.logs[].content' | grep -i "error\|traceback\|exception\|failed"
 
-# Count errors
-echo "$LOGS" | jq -r '.logs[]' | grep -ci "error"
+# Client-side: show only the last N lines
+echo "$LOGS" | jq -r '.logs[].content' | tail -20
+
+# Client-side: count errors
+echo "$LOGS" | jq -r '.logs[].content' | grep -ci "error"
 ```
 
 ## Troubleshooting Guide
@@ -223,6 +259,6 @@ echo "$LOGS" | jq -r '.logs[]' | grep -ci "error"
 1. Parse the user's argument to determine the operation (`runtime-logs`, `endpoint-logs`, `metrics`).
 2. If a runtime ID is needed and not provided, list runtimes first (`/agentbase-runtime list`) and ask the user to pick one.
 3. If an endpoint ID is needed, list endpoints for the runtime and ask the user to pick one.
-4. For logs, default to `{"from": 0, "limit": 100}` to fetch the most recent entries. Use `from` to paginate if more logs are needed (max `from`: 5000, max `limit`: 1000).
-5. Present log output in a readable format, highlighting errors and warnings.
-6. For metrics, display CPU (`cpuCores`) and RAM (`memoryBytes`, convert to MB/GB). To show usage as percentages, cross-reference the runtime's flavor via `/agentbase-runtime get` to obtain the flavor's CPU/RAM limits.
+4. For logs, default to `{"from": 0, "limit": 100}` to fetch the most recent entries. Use `from` to paginate if more logs are needed (max `from`: 5000, recommended max `limit`: 500). Use `query` for keyword filtering and `fromTimestamp`/`toTimestamp` for time range filtering when the user specifies these.
+5. Present log output in a readable format, highlighting errors and warnings. Each log entry has `timestamp` and `content` fields.
+6. For metrics, display CPU (`cpuCoresUsage`) and RAM (`memoryBytesUsage`, convert values to MB/GB) as time-series data points. Use `fromTimestamp`/`toTimestamp` query params for historical ranges. To show usage as percentages, cross-reference the runtime's flavor via `/agentbase-runtime get` to obtain the flavor's CPU/RAM limits.
