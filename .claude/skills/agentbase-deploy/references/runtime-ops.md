@@ -37,7 +37,7 @@ Present a summary with recommended values and ask the user to confirm or adjust:
 
 **Step 3 - Environment variables file:**
 
-Ask the user which env file to use (e.g., `.env`). This file will be passed as `--env-file <path>` to the runtime script. **NEVER read the env file yourself** — the script reads it internally. Remind the user to review their env file before proceeding and ensure it does not contain auto-injected variables (`GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET`, `GREENNODE_AGENT_IDENTITY`, `GREENNODE_ENDPOINT_URL`). If the user has no env file, proceed without `--env-file`.
+You **MUST ask the user** (using AskUserQuestion) to specify the exact path to their env file — do NOT assume `.env` or any default. Example: "What is the path to your environment variables file? (e.g., `.env`, `.env.production`, or 'none' if not needed)". This file will be passed as `--env-file <path>` to the runtime script. **NEVER read the env file yourself** — the script reads it internally. Remind the user to review their env file before proceeding and ensure it does not contain auto-injected variables (`GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET`, `GREENNODE_AGENT_IDENTITY`, `GREENNODE_ENDPOINT_URL`). If the user has no env file, proceed without `--env-file`.
 
 **Step 4 - Confirm and create:**
 

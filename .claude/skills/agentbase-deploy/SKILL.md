@@ -73,10 +73,10 @@ Verify `Dockerfile` exists in the project root. If missing, inform the user and 
 
 Explain to the user that the **env file** contains environment variables that will be injected into the deployed container at runtime — this is how configuration values like API keys, model names, database URLs, and other secrets/settings are passed to the agent without baking them into the Docker image.
 
-Ask the user where their environment variables file is (e.g., `.env`, or a custom path). This file will be passed as `--env-file <path>` to `runtime.sh create`/`update`, which reads it internally and sends the vars as `environmentVariables` in the API payload.
+You **MUST ask the user** (using AskUserQuestion) to specify the path to their environment variables file. Do NOT assume `.env` or any default — the user must explicitly provide the file path. Example question: "What is the path to your environment variables file? (e.g., `.env`, `.env.production`, or another path — enter 'none' if you don't need one)"
 
-- If the user confirms a file path, use it directly — do NOT read or inspect the file contents.
-- If the user says they have no env file or no env vars needed, proceed without `--env-file`.
+- If the user provides a file path, use it directly — do NOT read or inspect the file contents.
+- If the user says they have no env file, no env vars needed, or "none", proceed without `--env-file`.
 **IMPORTANT — Auto-injected environment variables**: Before confirming the env file, you MUST inform the user that the following environment variables are **automatically injected by AgentBase Runtime** into every deployed container. The user should **NOT** set these manually in their `.env` file — doing so may cause conflicts or override platform-managed values:
 
 | Variable | Description |
@@ -175,7 +175,7 @@ bash .claude/skills/agentbase/scripts/runtime.sh create \
   --name "<runtime-name>" \
   --image "<registry>/<runtime-name>:<tag>" \
   --flavor "<user-selected-flavor>" \
-  --env-file .env \
+  --env-file <user-specified-env-file-path> \
   [--description ""] \
   [--min-replicas 1] \
   [--max-replicas 1] \
@@ -194,7 +194,7 @@ This automatically creates a `DEFAULT` endpoint.
 bash .claude/skills/agentbase/scripts/runtime.sh update $RUNTIME_ID \
   --image "<registry>/<runtime-name>:<tag>" \
   --flavor "<user-selected-flavor>" \
-  --env-file .env \
+  --env-file <user-specified-env-file-path> \
   [--description ""] \
   [--registry-credentials-file PATH]
 ```
