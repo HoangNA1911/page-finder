@@ -86,7 +86,7 @@ Ask the user where their environment variables file is (e.g., `.env`, or a custo
 | `GREENNODE_AGENT_IDENTITY` | Agent identity name — the registered identity of this agent on the platform. The SDK uses this to identify which agent is requesting credentials, so it can retrieve the correct outbound auth credentials (API keys, OAuth2 tokens) stored via `/agentbase-manage auth`. |
 | `GREENNODE_ENDPOINT_URL` | Endpoint URL — the public URL that routes requests to this agent's container. Useful for self-referencing callbacks or webhook registrations. |
 
-The AgentBase SDK (`greennode-agentbase`) automatically reads these variables — no manual configuration is needed in agent code. If the user's `.env` file contains any of these variables, advise them to remove those entries to avoid conflicts.
+The AgentBase SDK (`greennode-agentbase`) automatically reads these variables — no manual configuration is needed in agent code. Remind the user to check their `.env` file and remove any of these auto-injected variables if present, to avoid conflicts. Do NOT read the `.env` file yourself to check — the user must verify this themselves.
 
 #### 1c. Gather runtime parameters
 

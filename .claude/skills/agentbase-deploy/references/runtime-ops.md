@@ -30,20 +30,14 @@ Present a summary with recommended values and ask the user to confirm or adjust:
 | **Max replicas** | `1` | Range: 1-10. Set >1 for auto-scaling |
 | **CPU scale threshold** | `50`% | Range: 10-90%. Scale up when CPU exceeds this |
 | **Memory scale threshold** | `50`% | Range: 10-90%. Scale up when memory exceeds this |
-| **Environment variables** | `{}` | Key-value pairs to inject into container. **Scan env files first** (see below) |
+| **Environment variables** | `{}` | Key-value pairs to inject into container. User provides env file path (see below) |
 | **Command** | `[]` (use image default) | Override Docker ENTRYPOINT |
 | **Args** | `[]` (use image default) | Override Docker CMD |
 | **Description** | `""` | Optional description |
 
-**Step 3 - Detect environment variables from env files:**
+**Step 3 - Environment variables file:**
 
-Before confirming, scan the project directory for `.env.example`, `.env.sample`, `.env.template`, or `.env` files. If found:
-- Extract all variable names (lines matching `KEY=...` pattern)
-- Exclude auto-injected vars: `GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET`, `GREENNODE_AGENT_IDENTITY`, `GREENNODE_ENDPOINT_URL`
-- Present the remaining vars to the user and ask for values
-- Include confirmed vars in `environmentVariables` field
-
-If no env files are found, **proactively ask the user** to list all environment variables their agent needs at runtime (e.g., API keys, model names, external service URLs, memory IDs). Do NOT skip this step or assume no env vars are needed — most agents require at least some configuration.
+Ask the user which env file to use (e.g., `.env`). This file will be passed as `--env-file <path>` to the runtime script. **NEVER read the env file yourself** — the script reads it internally. Remind the user to review their env file before proceeding and ensure it does not contain auto-injected variables (`GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET`, `GREENNODE_AGENT_IDENTITY`, `GREENNODE_ENDPOINT_URL`). If the user has no env file, proceed without `--env-file`.
 
 **Step 4 - Confirm and create:**
 
