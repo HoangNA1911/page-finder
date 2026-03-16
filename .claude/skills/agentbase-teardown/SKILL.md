@@ -1,6 +1,6 @@
 ---
 name: agentbase-teardown
-description: Clean up and remove all platform resources for an agent project. Use when user wants to tear down, clean up, decommission, remove everything, start over, or delete all resources associated with an agent (runtime, identity, auth, memory, registry, API keys). Also trigger when user says 'delete everything', 'clean slate', 'tear down', 'remove all resources', 'clean up project', 'decommission agent', 'wipe project', 'start over', 'nuke it', or wants to completely remove an agent and all its associated resources in one go. DO NOT use for deleting a single specific resource — if user wants to delete just one runtime, use /agentbase-runtime; just one identity, use /agentbase-identity; just one auth provider, use /agentbase-auth; just one memory, use /agentbase-memory. Only use this skill when the intent is to remove ALL or MOST resources for an agent.
+description: Clean up and remove all platform resources for an agent project. Use when user wants to tear down, clean up, decommission, remove everything, start over, or delete all resources associated with an agent (runtime, identity, auth, memory, registry, API keys). Also trigger when user says 'delete everything', 'clean slate', 'tear down', 'remove all resources', 'clean up project', 'decommission agent', 'wipe project', 'start over', 'nuke it', or wants to completely remove an agent and all its associated resources in one go. DO NOT use for deleting a single specific resource — if user wants to delete just one runtime, use /agentbase-deploy runtime; just one identity, use /agentbase-manage identity; just one auth provider, use /agentbase-manage auth; just one memory, use /agentbase-manage memory. Only use this skill when the intent is to remove ALL or MOST resources for an agent.
 argument-hint: [project-name] [--dry-run]
 user-invocable: true
 ---
@@ -9,16 +9,15 @@ user-invocable: true
 
 Guided cleanup of all AgentBase resources for a project or agent.
 
-## Authentication & Endpoints
+## Authentication
 
-Read the shared auth setup reference at `/agentbase` skill's `references/auth-setup.md` for full IAM credential configuration. In brief: check for `GREENNODE_CLIENT_ID` and `GREENNODE_CLIENT_SECRET` in environment variables or `.greennode.json` in the **current working directory only** (do NOT search recursively or look outside the current directory), then use `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)` to obtain a token. On 401: re-run with `--force`.
-
-**IMPORTANT:** Before constructing any API URL, read `/agentbase` skill's `references/endpoints.md` for the domain validation whitelist. Only use domains listed there.
+Read the shared auth setup reference at `/agentbase` skill's `references/auth-setup.md` for full IAM credential configuration. In brief: run `bash .claude/skills/agentbase/scripts/check_credentials.sh iam` to verify credentials are configured. **NEVER read `.greennode.json` or `.env` directly** — always use the helper scripts. If `check_credentials.sh iam` returns MISSING, **STOP — you MUST read** the **"If Credentials Are Not Found"** section in `/agentbase` skill's `references/auth-setup.md` and follow it exactly. Do NOT skip this or provide your own credential setup instructions.
 
 ---
 
 ## Interaction Guidelines
 
+- **Never assume API response structure** — always inspect the actual response first before extracting or filtering data. Do not guess field names.
 - **ALWAYS show full deletion plan before executing** — never delete anything without showing the user exactly what will be removed
 - **ALWAYS require explicit confirmation (HARD GATE)** — the user must respond with an explicit confirmation keyword (`yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `lgtm`, or equivalent affirmative) before any deletion begins. If the user responds with ANYTHING ELSE (deselecting items, questions, adjustments, or ambiguous text), treat it as additional input — update the plan and re-present for confirmation again. NEVER interpret a non-confirmation response as approval
 - **Support --dry-run** — if the user passes `--dry-run`, show the plan only and do not execute any deletions
@@ -40,13 +39,20 @@ Determine which project/agent to tear down:
 
 ### Step 2: Discover Related Resources
 
-Authenticate and call all list APIs in parallel to find resources matching the project name. See the shared reference at `/agentbase` skill's `references/resource-discovery.md` for the full list of 8 discovery API calls with curl examples, pagination details, and response shape differences.
+Discover all resources matching the project name:
+
+```bash
+bash .claude/skills/agentbase/scripts/discovery.sh json
+```
+
+This returns JSON with all resources across all services. Parse the output to find resources matching the project name.
 
 **Resource matching priority**:
 1. **Exact resource IDs** from `.agentbase-state.json` or `.greennode.json` (preferred — most precise)
-2. **Name matching** — look for resources whose name contains or matches the project name (case-insensitive)
+2. **Prefix matching** — look for resources whose name starts with the project name (case-insensitive). For example, project "my-agent" matches "my-agent-identity" and "my-agent-key", but NOT "test-my-agent".
+3. **Exact name match** — if prefix matching returns no results, try exact match on the project name itself.
 
-> **Warning**: Name-based matching can be broad. For example, a project named "test" could match "test-agent" AND "api-test". Always show exact resource IDs (not just names) in the deletion plan so the user can verify which resources will be affected. If pattern matching finds resources that may belong to other projects, explicitly warn the user.
+> **Warning**: Always show exact resource IDs and full names in the deletion plan so the user can verify which resources will be affected. If matching finds resources that may belong to other projects, explicitly warn the user and ask them to confirm each resource individually.
 
 ### Step 3: Present Deletion Plan
 
@@ -79,50 +85,44 @@ Do NOT proceed without explicit confirmation.
 
 ### Step 5: Execute Deletions in Dependency Order
 
-Delete in this specific order to avoid dependency errors. If any API call returns 401 Unauthorized during the teardown sequence, re-fetch the IAM token and retry the failed call before continuing.
+Delete in this specific order to avoid dependency errors. If any script call returns an auth error (401/403) during the teardown sequence, re-authenticate with `bash .claude/skills/agentbase/scripts/get_token.sh --force` and retry the failed call once. If the retry also fails, report the error and continue with the next deletion.
 
-**Phase 1 — Runtime endpoints:**
+**Phase 1 — Runtime endpoints** (MUST run before Phase 2):
+> **Why order matters**: The API rejects runtime deletion if custom endpoints still exist. You must delete all non-DEFAULT endpoints before deleting the runtime.
+
 ```bash
 # List endpoints for each runtime
-curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints?page=1&size=100" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints list $RUNTIME_ID
 
 # Delete each non-DEFAULT endpoint
-curl -s -X DELETE "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints/$ENDPOINT_ID" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints delete $RUNTIME_ID $ENDPOINT_ID
 ```
 
-**Phase 2 — Runtimes:**
+**Phase 2 — Runtimes** (only after all custom endpoints are deleted):
 ```bash
-curl -s -X DELETE "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/runtime.sh delete $RUNTIME_ID
 ```
 
 **Phase 3 — Auth providers** (API Key, Delegated, OAuth2):
 ```bash
 # API Key providers
-curl -s -X DELETE "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/api-key-providers/$NAME" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/auth.sh apikey delete --name $NAME
 
 # Delegated providers
-curl -s -X DELETE "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/delegated-api-key-providers/$NAME" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/auth.sh delegated delete --name $NAME
 
 # OAuth2 providers
-curl -s -X DELETE "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/oauth2-providers/$NAME" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/auth.sh oauth2 delete --name $NAME
 ```
 
 **Phase 4 — Agent identity:**
 ```bash
-curl -s -X DELETE "https://agentbase.api.vngcloud.vn/identity/api/v1/agent-identities/$NAME" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/identity.sh delete $NAME
 ```
 
 **Phase 5 — Memory:**
 ```bash
-curl -s -X DELETE "https://agentbase.api.vngcloud.vn/memory/memories/$MEMORY_ID" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/memory.sh delete $MEMORY_ID
 ```
 
 **Phase 6 — vCR repositories:**
@@ -130,24 +130,29 @@ curl -s -X DELETE "https://agentbase.api.vngcloud.vn/memory/memories/$MEMORY_ID"
 
 ```bash
 # Step 1: List all images in the repo (paginate if totalPage > 1)
-curl -s "https://vcr.api.vngcloud.vn/v1/repository/$REPO_ID/images?name=&page=1&size=100" \
-  -H "Authorization: Bearer $TOKEN"
+PAGE=1
+while true; do
+  RESULT=$(bash .claude/skills/agentbase/scripts/vcr.sh image list $REPO_ID --page $PAGE --size 100)
+  # Delete each image on this page
+  # bash .claude/skills/agentbase/scripts/vcr.sh image delete $REPO_ID --name $IMAGE_NAME
+  TOTAL_PAGE=$(echo "$RESULT" | jq '.totalPage // 1')
+  [ "$PAGE" -ge "$TOTAL_PAGE" ] && break
+  PAGE=$((PAGE + 1))
+done
 
-# Step 2: Delete each image (repeat for every imageName returned)
-curl -s -X DELETE "https://vcr.api.vngcloud.vn/v1/repository/$REPO_ID/images/delete?imageName=$IMAGE_NAME" \
-  -H "Authorization: Bearer $TOKEN"
+# Step 2: Verify all images are deleted before deleting the repo
+bash .claude/skills/agentbase/scripts/vcr.sh image list $REPO_ID
+# Only proceed if no images remain
 
-# Step 3: After all images are deleted, delete the repo
-curl -s -X DELETE "https://vcr.api.vngcloud.vn/v1/repository/$REPO_ID" \
-  -H "Authorization: Bearer $TOKEN"
+# Step 3: Delete the repo
+bash .claude/skills/agentbase/scripts/vcr.sh repo delete $REPO_ID
 ```
 
 **Phase 7 — AIP API keys** (optional, may be shared):
 ```bash
-curl -s -X DELETE "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys/$KEY_NAME" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/aip.sh api-keys delete $KEY_NAME
 ```
-After deleting an AIP key, poll `GET /v1/api-keys/{name}` every 3 seconds until HTTP 404 (timeout ~30s) to confirm deletion.
+The `aip.sh api-keys delete` command sends the DELETE request and returns immediately. Poll with `aip.sh api-keys get $KEY_NAME` until you get a 404 to confirm deletion.
 
 ### Step 6: Report Results
 
@@ -163,15 +168,34 @@ Teardown Results for "my-agent":
   Skipped vCR repo "my-agent-repo" (user chose to keep)
   Failed to delete AIP key "my-agent-key" (403 Forbidden)
 
-Teardown complete. 5 of 7 resources removed.
+Teardown finished. 5 of 7 resources removed. 2 failed — see errors above.
 ```
 
 ### Step 7: Clean Up Local State
 
-If `.agentbase-state.json` exists in the current directory, offer to remove it:
+If `.agentbase-state.json` exists in the current directory, **reset the `wizard_step` to 0** and clear resource IDs that were deleted (e.g., `runtime_id`, `memory_id`, `agent_identity`, `aip_key_name`, `vcr_repo_name`). This prevents `/agentbase-wizard resume` from trying to resume with stale references to deleted resources. Only clear fields for resources that were actually deleted — keep fields for resources the user chose to skip/keep.
+
+If `.agentbase/` directory exists, offer to remove it:
 ```
-Found .agentbase-state.json in current directory. Remove it? (y/n)
+Found local AgentBase files:
+  - .agentbase-state.json (wizard state — will be reset)
+  - .agentbase/ (token cache, temp files)
+Reset wizard state and remove cache? (y/n)
 ```
+If file operations fail (e.g., permission denied), report the specific error and suggest the user handle them manually.
+
+---
+
+## Troubleshooting
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| Runtime deletion fails (400) | Custom endpoints still exist | Delete all non-DEFAULT endpoints first, then retry runtime deletion (see Phase 1 → Phase 2 order) |
+| Repo deletion fails (400) | Repository still contains images | Delete all images in the repo first (`vcr.sh image delete`), then retry repo deletion |
+| 401 Unauthorized mid-teardown | IAM token expired during long teardown | Re-authenticate (`get_token.sh --force`) and retry the failed deletion |
+| Resource belongs to another project | Name-based matching too broad (e.g., project "test" matches "api-test") | Always verify resource IDs in the deletion plan. Deselect items that don't belong to the target project |
+| Identity deletion fails (404/500) | Identity name incorrect or already deleted | Verify identity name with `identity.sh list` before retrying |
+| Memory deletion fails | Memory ID incorrect or already deleted | Verify memory ID with `memory.sh list` before retrying |
 
 ---
 
@@ -180,10 +204,10 @@ Found .agentbase-state.json in current directory. Remove it? (y/n)
 1. Parse the user's argument for project name and `--dry-run` flag.
 2. Authenticate (see Authentication section).
 3. Identify the project (argument, `.agentbase-state.json`, or ask user).
-4. Discover all related resources across all services (parallel API calls).
+4. Discover all related resources using `bash .claude/skills/agentbase/scripts/discovery.sh json`.
 5. Present the deletion plan with numbered items.
 6. If `--dry-run`, stop after showing the plan.
 7. Wait for user confirmation (allow deselecting items).
-8. Execute deletions in dependency order, reporting progress.
+8. Execute deletions in dependency order using the script commands, reporting progress.
 9. Show final summary.
-10. Offer to clean up `.agentbase-state.json` if present.
+10. Offer to clean up `.agentbase-state.json` and `.agentbase/` directory if present.

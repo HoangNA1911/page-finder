@@ -1,48 +1,16 @@
 # Resource Discovery Reference
 
-Shared reference for discovering all AgentBase resources across services. Used by `/agentbase-status` and `/agentbase-teardown`.
+Shared reference for discovering all AgentBase resources across services. Used by `/agentbase-monitor` (dashboard) and `/agentbase-teardown`.
 
-## Authentication
+## Discovery
 
-Get an IAM bearer token first (see `references/auth-setup.md`).
-
-## Discovery API Calls
-
-Run all of these in parallel to fetch resources across all services:
+Run the discovery script to fetch resources across all services:
 
 ```bash
-# Agent Identities (Identity Service — 0-indexed)
-curl -s "https://agentbase.api.vngcloud.vn/identity/api/v1/agent-identities?page=0&size=100" \
-  -H "Authorization: Bearer $TOKEN"
-
-# API Key Providers (Identity Service — 0-indexed)
-curl -s "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/api-key-providers?page=0&size=100" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Delegated API Key Providers (Identity Service — 0-indexed)
-curl -s "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/delegated-api-key-providers?page=0&size=100" \
-  -H "Authorization: Bearer $TOKEN"
-
-# OAuth2 Providers (Identity Service — 0-indexed)
-curl -s "https://agentbase.api.vngcloud.vn/identity/api/v1/outbound-auth/oauth2-providers?page=0&size=100" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Runtimes (Runtime Service — 1-indexed)
-curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes?page=1&size=100" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Memories (Memory Service — 1-indexed)
-curl -s "https://agentbase.api.vngcloud.vn/memory/memories?page=1&size=100" \
-  -H "Authorization: Bearer $TOKEN"
-
-# AIP API Keys (AI Platform — 1-indexed)
-curl -s "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys?page=1&size=100" \
-  -H "Authorization: Bearer $TOKEN"
-
-# vCR Repositories (Container Registry — 1-indexed)
-curl -s "https://vcr.api.vngcloud.vn/v1/repository?page=1&size=100" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/discovery.sh
 ```
+
+For JSON output, use `bash .claude/skills/agentbase/scripts/discovery.sh json`
 
 ## Service Summary
 

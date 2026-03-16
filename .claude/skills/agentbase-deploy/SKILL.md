@@ -1,71 +1,111 @@
 ---
 name: agentbase-deploy
-description: Deploy an AI agent to production (end-to-end). Handles full pipeline: build Docker image, push to registry, create/update runtime, verify deployment. Also trigger for post-build deployment intent: "after testing, deploy it", "then deploy", "ship it to production". Trigger phrases: "deploy my agent", "ship it", "go live", "put it online", "release new version", "push to production", "make it live", "deploy to production", "publish my agent". DO NOT use for managing existing runtimes, endpoints, or versions without deploying new code — use /agentbase-runtime instead. DO NOT trigger for deploying non-AI-agent applications (React apps, web apps, microservices, etc.) — this skill is exclusively for AI agent deployment on GreenNode AgentBase.
-argument-hint: [runtime-name]
+description: >
+  Deploy, manage runtimes, and manage container registry for AI agents on GreenNode AgentBase.
+  Part 1 — Deploy: Full end-to-end pipeline (build, push, create/update runtime, verify).
+  Trigger: "deploy my agent", "ship it", "go live", "push to production", "release new version", "redeploy", "update deployment".
+  Part 2 — Runtime Management: Manage existing runtimes, endpoints, scaling, versions without redeploying.
+  Trigger: "list my runtimes", "check runtime status", "scale my agent", "delete runtime", "what flavors are available".
+  Part 3 — Container Registry (vCR): Manage Docker repos, images, robot accounts.
+  Trigger: "create docker repo", "docker registry", "push image", "manage container repository", "docker login".
+  DO NOT use for deploying non-AI-agent applications (React apps, web apps, microservices) — this skill is
+  exclusively for AI agent deployment on GreenNode AgentBase. DO NOT trigger for general Docker questions
+  unrelated to agent deployment or the platform registry. For logs and metrics use /agentbase-monitor.
+argument-hint: <deploy|runtime|vcr> [operation] [id-or-name]
 user-invocable: true
 ---
 
-# AgentBase Deploy Workflow
+# AgentBase Deploy, Runtime & Registry
 
-Full end-to-end deployment of an agent to GreenNode AgentBase Runtime.
+Full end-to-end deployment, runtime management, and container registry operations for AI agents on GreenNode AgentBase.
+
+- **Console**: https://aiplatform.console.vngcloud.vn/runtime
+
+## Authentication & Endpoints
+
+Run `bash .claude/skills/agentbase/scripts/check_credentials.sh iam` to verify credentials are configured. **NEVER read `.greennode.json` or `.env` directly** — always use the helper scripts. If `check_credentials.sh iam` returns MISSING, **STOP — you MUST read** the **"If Credentials Are Not Found"** section in `/agentbase` skill's `references/auth-setup.md` and follow it exactly. Do NOT skip this or provide your own credential setup instructions.
+
+**Note**: For vCR operations (Part 3), the service account needs the **`vcrFullAccess`** policy.
 
 ## Interaction Guidelines
 
-- **Guide first, act only when asked** — if the user asks "how to" deploy or about the deployment process, respond with instructions and guidance only. Do NOT execute the deployment pipeline unless they explicitly ask you to do it (e.g., "deploy my agent", "ship it").
-- **Present full deployment plan before starting (HARD GATE)** — before executing any step, present a complete deployment plan summarizing all parameters (runtime name, image tag, registry URL, build platform, compute flavor, autoscaling settings, etc.) and ask the user to confirm. Do NOT start execution until the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `ship it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, additional info, or ambiguous text), treat it as adjustment input — update the plan and re-present the full summary for confirmation again. NEVER interpret a non-confirmation response as approval.
-- **Re-present plan after any adjustment** — if the user requests changes to the plan (e.g., different runtime name, different flavor, different registry), update the plan and present the **full updated plan** again for confirmation. Do NOT proceed with execution until the user explicitly approves the updated plan with a confirmation keyword. This applies to every adjustment — always re-present and wait for explicit approval.
-- **Never auto-decide parameters** — when a step requires parameters (e.g., runtime name, image tag, platform, flavor, registry credentials), always ask the user for each required value. You may recommend sensible defaults or options, but never auto-select or impose values without the user's explicit agreement.
-- **Present options, let user choose** — when there are multiple choices (e.g., build platform, compute flavor, registry auth method), list the available options and let the user pick. Do not make the choice for them.
+- **Guide first, act only when asked** — if the user asks "how to" deploy, manage a runtime, or work with the registry, respond with instructions and guidance only. Do NOT execute the pipeline or API calls unless they explicitly ask you to do it (e.g., "deploy my agent", "ship it", "create a repo for me").
+- **Present full plan before starting (HARD GATE)** — before executing any action, present a complete plan summarizing all parameters and ask the user to confirm. Do NOT start execution until the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `ship it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, additional info, or ambiguous text), treat it as adjustment input — update the plan and re-present the full summary for confirmation again. NEVER interpret a non-confirmation response as approval. For destructive operations (delete runtime, delete endpoint, delete repo, delete robot account, delete image), additionally warn that the action is irreversible.
+- **Re-present plan after any adjustment** — if the user requests changes to the plan, update and present the **full updated plan** again for confirmation. Do NOT proceed with execution until the user explicitly approves the updated plan with a confirmation keyword. This applies to every adjustment — always re-present and wait for explicit approval.
+- **Never auto-decide parameters** — when a step requires parameters (e.g., runtime name, image tag, platform, flavor, registry credentials, repo name, permissions), always ask the user for each required value. You may recommend sensible defaults or options, but never auto-select or impose values without the user's explicit agreement.
+- **Present options, let user choose** — when there are multiple choices (e.g., build platform, compute flavor, registry auth method, permissions, repositories), list the available options and let the user pick. Do not make the choice for them.
+- **If the agent configures an LLM model** via environment variables (e.g. `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`), and the user is using GreenNode AIP, use `/aip` skill to list available models and **let the user choose**. When listing, prioritize showing models with `modelStatus = ENABLED` and sort by most recent first. If the user uses a different LLM provider (OpenAI, Ollama, etc.), let them configure the env vars directly.
 - **Dry-run support**: When user requests `--dry-run` or preview, show the exact API request (method, URL, headers, payload) and explain the expected outcome WITHOUT executing. Let user review before proceeding.
-- **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
+- **Never assume API response structure** — always inspect the actual response first before extracting or filtering data. Do not guess field names.
+
+---
+
+# Part 1: Deploy Pipeline
+
+Full end-to-end deployment of an agent to GreenNode AgentBase Runtime.
 
 ## Prerequisites
 
 Before starting, gather:
-- **IAM credentials** (needed for calling platform APIs during deployment — the deployed container gets its own credentials auto-injected by the runtime): Read the shared auth setup reference at `/agentbase` skill's `references/auth-setup.md` for full IAM credential configuration. In brief: check for `GREENNODE_CLIENT_ID` and `GREENNODE_CLIENT_SECRET` in environment variables or `.greennode.json` in the **current working directory only** (do NOT search recursively or look outside the current directory), then fetch an access token via the IAM token endpoint.
-- **API domains**: Before constructing any API URL, read `/agentbase` skill's `references/endpoints.md` for the domain validation whitelist. Only use domains listed there.
-- **Docker registry URL**: Ask the user if not previously configured. The image will be pushed here.
+- **IAM credentials** (needed for calling platform APIs during deployment — the deployed container gets its own credentials auto-injected by the runtime): See the Authentication & Endpoints section above.
+- **Docker registry (HARD GATE)**: You MUST ask the user about their Docker registry situation BEFORE presenting any deployment plan. Use AskUserQuestion to ask whether they:
+  1. **Already have a Docker repo** — ask the user for the path to their registry credentials JSON file (format: `{"username": "...", "password": "...", "registry": "...", "repository": "..."}`). **NEVER read the credentials file directly** — use the helper script to validate and extract non-secret fields:
+     ```bash
+     bash .claude/skills/agentbase/scripts/check_credentials.sh registry --credentials-file <path>
+     ```
+     This outputs the `username`, `registry`, and `repository` fields without exposing the password. Use those details for Docker login and `--registry-credentials-file`.
+     - If the output shows a `repository` field, use it to construct the image path: `{registry}/{repository}/{imageName}:{tag}`.
+     - If `repository` is not shown, **ask the user** for the full image repository path (e.g., `myorg/myrepo`). Do NOT call any API (vCR or otherwise) to look it up — the user knows their own registry layout.
+     - The registry can be ANY Docker-compatible registry (Docker Hub, GHCR, ECR, vCR, self-hosted, etc.) — do NOT assume it is vCR.
+  2. **Need to create a new repo on vCR** — if so, follow Part 3 to create one.
+  Do NOT auto-decide to create a new vCR repo — the user may already have a repo and just needs to provide credentials. Do NOT call vCR APIs to discover repos when the user has already provided registry information. Do NOT present a deployment plan until the registry choice is confirmed.
 - **Runtime name**: From the argument, or ask the user.
 
 ## Deployment Steps
 
-### Step 1: Validate Project
+### Step 1: Validate & Gather Parameters
 
-Check the current working directory for required files:
+#### 1a. Check Dockerfile
 
-- [ ] `Dockerfile` exists
-- [ ] Agent entrypoint exists (e.g. `main.py`, `app.py`, or as defined in Dockerfile CMD)
-- [ ] Dependencies file exists (`requirements.txt`, `pyproject.toml`, `package.json`, etc.)
-- [ ] Agent exposes `GET /health` returning HTTP 200 (search code for a `/health` route)
-- [ ] `.dockerignore` exists and excludes sensitive files
+Verify `Dockerfile` exists in the project root. If missing, inform the user and offer to help create one. Do NOT proceed without it.
 
-If any are missing, inform the user what is needed and offer to help create them. Do NOT proceed until validation passes.
+#### 1b. Environment variables
 
-**Dockerfile requirements**:
-- Must expose port `8080`
-- Must install dependencies
-- Can use any language/framework as long as it satisfies the runtime service contract
+Explain to the user that the **env file** contains environment variables that will be injected into the deployed container at runtime — this is how configuration values like API keys, model names, database URLs, and other secrets/settings are passed to the agent without baking them into the Docker image.
 
-**CRITICAL — `.dockerignore` and sensitive files**:
-- Check if a `.dockerignore` file exists. If not, **create one** before building. It MUST exclude at minimum:
-  ```
-  .env
-  .env.*
-  .greennode.json
-  .git/
-  .venv/
-  venv/
-  __pycache__/
-  *.py[cod]
-  ```
-- If `.dockerignore` exists, verify it excludes `.env`, `.env.*`, and `.greennode.json`. If any are missing, **warn the user** and offer to add them.
-- **NEVER allow sensitive files** (`.env`, `.greennode.json`, credential files, API keys) to be copied into the Docker image. This is a security risk — secrets baked into images can be extracted by anyone with access to the image.
-- If the Dockerfile uses `COPY . .` without a proper `.dockerignore`, warn the user that all files including secrets will be copied into the image.
-- **For environment variables needed at runtime** (beyond what AgentBase auto-injects like `GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET`, `GREENNODE_AGENT_IDENTITY`): these should be configured via the `environmentVariables` field in the runtime create/update API, NOT baked into the Docker image. Ask the user if they need any additional environment variables and include them in the runtime API call.
+Ask the user where their environment variables file is (e.g., `.env`, or a custom path). This file will be passed as `--env-file <path>` to `runtime.sh create`/`update`, which reads it internally and sends the vars as `environmentVariables` in the API payload.
 
-**Ask the user** if they have a preference for:
-- Compute flavor (default: `1x1-general` -- 1 CPU, 1 GB RAM). List flavors with `/agentbase-runtime` if needed.
-- Autoscaling settings (default: 1 replica, no scaling)
+- If the user confirms a file path, use it directly — do NOT read or inspect the file contents.
+- If the user says they have no env file or no env vars needed, proceed without `--env-file`.
+**IMPORTANT — Auto-injected environment variables**: Before confirming the env file, you MUST inform the user that the following environment variables are **automatically injected by AgentBase Runtime** into every deployed container. The user should **NOT** set these manually in their `.env` file — doing so may cause conflicts or override platform-managed values:
+
+| Variable | Description |
+|----------|-------------|
+| `GREENNODE_CLIENT_ID` | IAM service account ID — uniquely identifies this runtime's service account for authenticating with platform APIs (Memory, AIP, etc.). Managed and rotated by the runtime. |
+| `GREENNODE_CLIENT_SECRET` | IAM service account secret — the credential paired with `CLIENT_ID`. **Never** hardcode or log this value. |
+| `GREENNODE_AGENT_IDENTITY` | Agent identity name — the registered identity of this agent on the platform. The SDK uses this to identify which agent is requesting credentials, so it can retrieve the correct outbound auth credentials (API keys, OAuth2 tokens) stored via `/agentbase-manage auth`. |
+| `GREENNODE_ENDPOINT_URL` | Endpoint URL — the public URL that routes requests to this agent's container. Useful for self-referencing callbacks or webhook registrations. |
+
+The AgentBase SDK (`greennode-agentbase`) automatically reads these variables — no manual configuration is needed in agent code. If the user's `.env` file contains any of these variables, advise them to remove those entries to avoid conflicts.
+
+#### 1c. Gather runtime parameters
+
+- **Runtime name**: from the argument, or ask the user.
+- **Compute flavor**: You MUST list available flavors using `bash .claude/skills/agentbase/scripts/runtime.sh flavors` and present them to the user so they can choose. Do NOT auto-select a flavor — always let the user pick. You may suggest `1x1-general` (1 CPU, 1 GB RAM) as a reasonable starting point, but the user must explicitly confirm their choice.
+- **Autoscaling**: Present the following options with recommended defaults and let the user adjust:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Min replicas | `1` | Minimum number of running instances (1-10) |
+| Max replicas | `1` | Maximum instances for auto-scaling (1-10). Set >1 to enable auto-scaling |
+| CPU scale threshold | `50`% | Scale up when average CPU utilization exceeds this (10-90%) |
+| Memory scale threshold | `50`% | Scale up when average memory utilization exceeds this (10-90%) |
+
+Always include autoscale flags (`--min-replicas`, `--max-replicas`, `--cpu-scale`, `--mem-scale`) in the create/update command, even when using defaults, so the user can see what values are being applied.
+
+#### 1d. Security check (non-blocking)
+
+If `.dockerignore` is missing or doesn't exclude sensitive files (`.env`, `.greennode.json`, registry credentials files), **warn the user** and offer to fix it. Do not block deployment for this.
 
 ### Step 2: Build Docker Image
 
@@ -87,178 +127,95 @@ docker build --platform <selected-platform> -t <registry>/<runtime-name>:<tag> .
 
 ### Step 3: Push to Registry
 
-**Before pushing**, ask the user how they want to authenticate with the Docker registry using AskUserQuestion. Present these three options:
+The user must be logged in to Docker for the target registry before pushing. Ask how they want to authenticate:
 
-1. **Already logged in** — The user has already run `docker login` for the target registry. Verify by attempting to pull a nonexistent image:
-   ```bash
-   docker pull <registry-host>/nonexistent/verify-auth:test 2>&1
-   ```
-   If the output contains "not found" or "manifest unknown", auth is working — proceed with the push. If the output contains "unauthorized" or "denied", the user is not logged in — ask them to choose another option.
+1. **Already logged in** — Verify with `docker pull <registry-host>/nonexistent:test 2>&1`. If output says "not found" → OK. If "unauthorized" → not logged in.
 
-2. **Provide credentials** — The user provides registry credentials manually. Collect:
-   - **Registry host** (e.g., `vcr.vngcloud.vn`, `docker.io`, `ghcr.io`)
-   - **Username**
-   - **Password / token**
-   Then run `docker login`:
+2. **Login with credentials file** — If the user already has a credentials file (see format below), login using:
    ```bash
-   echo "$PASSWORD" | docker login <registry-host> -u <username> --password-stdin
+   bash .claude/skills/agentbase/scripts/docker_login.sh --credentials-file <path>
    ```
 
-3. **Create a new repo on vCR** — The user wants to create a new Docker repository on GreenNode Container Registry (vCR) and set up credentials from scratch. Invoke the `/vcr` skill to:
-   - **Check for existing repos first** — vCR repo names must be unique. List existing repos and offer to reuse if a match is found.
-   - Create a repository on vCR (only if no duplicate exists)
-   - Create a robot account with push+pull permissions
-   - Run `docker login vcr.vngcloud.vn` with the robot account credentials
-   After the `/vcr` skill completes, continue with the push using the vCR registry path.
+3. **Login with username/password** — Ask for registry host and username, then instruct the user to run:
+   ```bash
+   echo 'YOUR_PASSWORD' | bash .claude/skills/agentbase/scripts/docker_login.sh \
+     --registry "<registry-host>" --username "<username>" --password-stdin \
+     --save --save-to-file <path-for-credentials-file>
+   ```
+   This logs in AND saves credentials to a file for use in Step 4.
 
-Once authentication is confirmed, push the image:
+4. **Create a new repo on vCR** — Follow Part 3: Container Registry workflow. Ask the user where to save the credentials file (`--output-file <path>`).
 
-```bash
-docker push <registry>/<runtime-name>:<tag>
-```
-
-- If push fails, check for authentication issues or network errors.
-
-**Private registry check**: After a successful push, ask the user if the registry is **private** (requires authentication to pull). If yes, collect and save:
-- `REGISTRY_USERNAME` — Docker username or robot account
-- `REGISTRY_PASSWORD` — Docker password or token
-
-These credentials will be passed as `imageAuth` when creating/updating the runtime so AgentBase can pull the image.
+Once authenticated, push: `docker push <registry>/<runtime-name>:<tag>`
 
 ### Step 4: Create or Update Runtime
 
-Obtain an IAM token: `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)`. On 401: re-run with `--force`.
+Pass collected parameters to `runtime.sh`:
+- `--env-file <path>` if the user provided an env file in Step 1.
+- `--registry-credentials-file <path>` if the registry is private (user provides path to their credentials file). If not provided, the image is assumed to be in a **public** registry.
 
-Then check if a runtime with this name already exists:
+**Registry credentials file format** (JSON):
+```json
+{"username": "myuser", "password": "mypass", "registry": "docker.io"}
+```
+Users can create this file manually or via `save_registry_credentials.sh --output-file <path>`. The `vcr.sh robot create --output-file <path>` command also generates this file automatically.
+
+First, check if a runtime with this name already exists:
 
 ```bash
-curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes?page=1&size=100" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/runtime.sh list
 ```
 
-Search the response `listData` for a matching `name`.
+Search the response `listData` for a matching `name`. **Important**: If the response indicates multiple pages (`totalPage > 1`), paginate through ALL pages to ensure the runtime name is not already in use on a later page. Use `--page N --size 100` to fetch each page until all runtimes are checked.
 
 #### If NEW runtime (no existing match):
 
-For **public registry**:
 ```bash
-curl -s -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "<runtime-name>",
-    "description": "",
-    "imageUrl": "<registry>/<runtime-name>:<tag>",
-    "command": [],
-    "args": [],
-    "environmentVariables": {},
-    "flavorId": "1x1-general",
-    "autoscaling": {"minReplicas": 1, "maxReplicas": 1, "cpuUtilization": 50, "memoryUtilization": 50}
-  }'
+bash .claude/skills/agentbase/scripts/runtime.sh create \
+  --name "<runtime-name>" \
+  --image "<registry>/<runtime-name>:<tag>" \
+  --flavor "<user-selected-flavor>" \
+  --env-file .env \
+  [--description ""] \
+  [--min-replicas 1] \
+  [--max-replicas 1] \
+  [--cpu-scale 50] \
+  [--mem-scale 50] \
+  [--registry-credentials-file PATH]
 ```
 
-For **private registry** (add `imageAuth` with credentials collected in Step 3):
-```bash
-curl -s -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "<runtime-name>",
-    "description": "",
-    "imageUrl": "<registry>/<runtime-name>:<tag>",
-    "imageAuth": {"enabled": true, "username": "<REGISTRY_USERNAME>", "password": "<REGISTRY_PASSWORD>"},
-    "command": [],
-    "args": [],
-    "environmentVariables": {},
-    "flavorId": "1x1-general",
-    "autoscaling": {"minReplicas": 1, "maxReplicas": 1, "cpuUtilization": 50, "memoryUtilization": 50}
-  }'
-```
+Use `--registry-credentials-file <path>` if the registry is private. The script reads the credentials file and adds imageAuth to the payload automatically.
 
 This automatically creates a `DEFAULT` endpoint.
 
 #### If EXISTING runtime (update):
 
-For **public registry**:
 ```bash
-curl -s -X PATCH "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "",
-    "imageUrl": "<registry>/<runtime-name>:<tag>",
-    "command": [],
-    "args": [],
-    "environmentVariables": {},
-    "flavorId": "1x1-general",
-    "autoscaling": {"minReplicas": 1, "maxReplicas": 1, "cpuUtilization": 50, "memoryUtilization": 50}
-  }'
+bash .claude/skills/agentbase/scripts/runtime.sh update $RUNTIME_ID \
+  --image "<registry>/<runtime-name>:<tag>" \
+  --flavor "<user-selected-flavor>" \
+  --env-file .env \
+  [--description ""] \
+  [--registry-credentials-file PATH]
 ```
 
-For **private registry** (add `imageAuth` with credentials collected in Step 3):
-```bash
-curl -s -X PATCH "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "",
-    "imageUrl": "<registry>/<runtime-name>:<tag>",
-    "imageAuth": {"enabled": true, "username": "<REGISTRY_USERNAME>", "password": "<REGISTRY_PASSWORD>"},
-    "command": [],
-    "args": [],
-    "environmentVariables": {},
-    "flavorId": "1x1-general",
-    "autoscaling": {"minReplicas": 1, "maxReplicas": 1, "cpuUtilization": 50, "memoryUtilization": 50}
-  }'
-```
+Use `--registry-credentials-file <path>` if the registry is private.
 
 This creates a new version. The `DEFAULT` endpoint auto-updates to the new version.
 
 **Canary deployment** (optional): If the user wants to test before routing all traffic, create a custom endpoint pointing to the new version:
 
 ```bash
-# Get the latest version number from the update response or list versions
-curl -s -X POST "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "canary", "version": <new-version-number>}'
+# NEW_VERSION is the version number from the update response above
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints create $RUNTIME_ID --name "canary" --version <new-version-number>
 ```
 
 ### Step 5: Wait for ACTIVE Status
 
-Poll the runtime status until it becomes `ACTIVE`. Use the appropriate version for the user's OS:
+The create/update scripts handle polling automatically. Check the status manually if needed:
 
-**macOS/Linux/WSL:**
 ```bash
-RUNTIME_ID="<id-from-step-4>"
-for i in $(seq 1 30); do
-  STATUS=$(curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID" \
-    -H "Authorization: Bearer $TOKEN" | jq -r '.status')
-  echo "Attempt $i: Status = $STATUS"
-  if [ "$STATUS" = "ACTIVE" ]; then break; fi
-  if [ "$STATUS" = "ERROR" ]; then
-    echo "Deployment failed with ERROR status."
-    break
-  fi
-  if [ "$i" = "30" ]; then
-    echo "Timed out after 5 minutes. Status is still $STATUS."
-    break
-  fi
-  sleep 10
-done
-```
-
-**Windows (PowerShell):**
-```powershell
-$RUNTIME_ID = "<id-from-step-4>"
-for ($i = 1; $i -le 30; $i++) {
-  $STATUS = (curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID" `
-    -H "Authorization: Bearer $TOKEN" | jq -r '.status')
-  Write-Host "Attempt ${i}: Status = $STATUS"
-  if ($STATUS -eq "ACTIVE") { break }
-  if ($STATUS -eq "ERROR") { Write-Host "Deployment failed with ERROR status."; break }
-  Start-Sleep -Seconds 10
-}
+bash .claude/skills/agentbase/scripts/runtime.sh get $RUNTIME_ID
 ```
 
 If status is `ERROR` after polling, show the runtime details and help debug. Common issues:
@@ -269,8 +226,7 @@ If status is `ERROR` after polling, show the runtime details and help debug. Com
 ### Step 6: Get Endpoint URL
 
 ```bash
-curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints?page=1&size=10" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints list $RUNTIME_ID
 ```
 
 Find the `DEFAULT` endpoint in the response and extract its `url` field.
@@ -300,30 +256,176 @@ Deployment complete!
 Console: https://aiplatform.console.vngcloud.vn/runtime
 ```
 
-Use `/agentbase-observe` to monitor logs and debug issues after deployment.
+Use `/agentbase-monitor` to monitor logs and debug issues after deployment.
 
-> **Agent Identity**: The runtime automatically provisions an agent identity for the deployed container. See `/agentbase-identity` for managing agent identities manually or viewing the auto-provisioned one.
+> **Agent Identity**: The runtime automatically provisions an agent identity for the deployed container. See `/agentbase-manage identity` for managing agent identities manually or viewing the auto-provisioned one.
 
-> **Memory-enabled agents**: If your agent uses conversation memory or long-term memory, set up the Memory Service first using `/agentbase-memory` before deploying, so the memory container is ready when the agent starts.
+> **Memory-enabled agents**: If your agent uses conversation memory or long-term memory, set up the Memory Service first using `/agentbase-manage memory` before deploying, so the memory container is ready when the agent starts.
 
 If the deployment failed at any step, clearly state which step failed, show error details, and suggest fixes.
 
 ### Rollback
 
-To rollback to a previous version, update the endpoint to point to the previous version number:
+**IMPORTANT**: The `DEFAULT` endpoint cannot be updated directly — the API rejects it with a 400 error. To rollback:
+
+**Option 1 — Update the runtime** (recommended): Update the runtime with the previous version's image/config. This creates a new version, and the `DEFAULT` endpoint automatically tracks it.
 
 ```bash
-# List versions to find the previous one
-curl -s "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/versions?page=1&size=10" \
-  -H "Authorization: Bearer $TOKEN"
+# List versions to find the previous image and config
+bash .claude/skills/agentbase/scripts/runtime.sh versions $RUNTIME_ID
 
-# Update DEFAULT endpoint to previous version
-curl -s -X PATCH "https://agentbase.api.vngcloud.vn/runtime/agent-runtimes/$RUNTIME_ID/endpoints/$ENDPOINT_ID?version=$PREVIOUS_VERSION" \
-  -H "Authorization: Bearer $TOKEN"
+# Update runtime with the previous version's image (creates a new version)
+bash .claude/skills/agentbase/scripts/runtime.sh update $RUNTIME_ID \
+  --image "<previous-image-url>" \
+  --flavor "<previous-flavor>"
 ```
+
+**Option 2 — Canary verification first**: Create a custom endpoint pointing to the old version to verify it works, then update the runtime.
+
+```bash
+# 1. List versions to find the previous version number
+bash .claude/skills/agentbase/scripts/runtime.sh versions $RUNTIME_ID
+# Response: listData[].version (integer), listData[].imageUrl, listData[].flavorId
+# Pick the version to roll back to (e.g., the second entry is the previous version)
+
+# 2. Create a custom endpoint on the old version to test
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints create $RUNTIME_ID --name "rollback-test" --version <previous-version-number>
+# Response includes the endpoint "id" — save it for cleanup
+
+# 3. Verify the old version works via the custom endpoint URL
+# Then update the runtime to roll back the DEFAULT endpoint
+bash .claude/skills/agentbase/scripts/runtime.sh update $RUNTIME_ID \
+  --image "<previous-image-url>" \
+  --flavor "<previous-flavor>"
+
+# 4. Clean up the test endpoint (use the endpoint id from step 2)
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints delete $RUNTIME_ID <endpoint-id>
+```
+
+---
+
+# Part 2: Runtime Management
+
+Manage agent runtimes on GreenNode AgentBase Runtime Service without rebuilding or redeploying. Covers CRUD operations on runtimes, endpoint management, version tracking, status polling, service account reset, and flavor listing.
+
+Use `bash .claude/skills/agentbase/scripts/runtime.sh help` for full command reference.
+
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| Create runtime | POST | `/agent-runtimes` |
+| List runtimes | GET | `/agent-runtimes?page={page}&size={size}` |
+| Get runtime | GET | `/agent-runtimes/{id}` |
+| Update runtime | PATCH | `/agent-runtimes/{id}` |
+| Delete runtime | DELETE | `/agent-runtimes/{id}` (must delete custom endpoints first) |
+| List endpoints | GET | `/agent-runtimes/{id}/endpoints` |
+| Create endpoint | POST | `/agent-runtimes/{id}/endpoints` |
+| Update endpoint | PATCH | `/agent-runtimes/{id}/endpoints/{endpointId}?version={N}` |
+| Delete endpoint | DELETE | `/agent-runtimes/{id}/endpoints/{endpointId}` |
+| List versions | GET | `/agent-runtimes/{id}/versions?page={page}&size={size}` |
+| Check status | GET | `/agent-runtimes/{id}` (check `status` field) |
+| Reset service account | PATCH | `/agent-runtimes/{id}/reset-service-account` |
+| List flavors | GET | `/flavors` |
+
+**You MUST read `references/runtime-ops.md`** for full API details, interactive parameter gathering, curl commands, and response schemas. Do NOT call runtime APIs without reading it first.
+
+---
+
+# Part 3: Container Registry (vCR)
+
+Manage Docker container repositories on GreenNode's Container Registry service (vCR). Covers the full lifecycle: creating repositories, setting up credentials (robot accounts), and managing images.
+
+## API Basics
+
+- **Image path format**: `vcr.vngcloud.vn/{repoBackendName}/{imageName}:{tag}` (use the repository's `backendName` from the API, not the display name)
+- **Pagination**: query params are `page` (1-indexed, first page is `page=1`) and `size` (items per page).
+
+Use `bash .claude/skills/agentbase/scripts/vcr.sh help` for full command reference. The scripts handle authentication and base URL automatically.
+
+For detailed request/response schemas and field descriptions, **you MUST read `references/vcr-api.md`**. Do NOT call vCR APIs without reading it first.
+
+## Core Capabilities
+
+| Capability | Key Operations |
+|------------|---------------|
+| Repository Management | List, create, get, delete repos; update quota |
+| Robot Accounts | List, create, update, delete, enable/disable; refresh secret key |
+| Permissions | Fetch available permissions; update robot account permissions |
+| Repo-Robot Attachment | List attached accounts; attach/detach robot accounts |
+| Image & Artifact Management | List, get detail, delete images; list/delete artifacts |
+
+## Key Workflow: Create a Robot Account (Summary)
+
+1. **Identify the repository** — list repos or create one (check for duplicates first)
+2. **Fetch permissions** — `bash .claude/skills/agentbase/scripts/vcr.sh permissions`; recommend `pull` + `push`. **IMPORTANT**: Do NOT use an "all permissions" option — it is broken on the backend. Always grant specific permissions (`pull` + `push`). If the user requests "all" permissions, warn them about this known issue and recommend `pull` + `push` instead.
+3. **Create robot account** — `bash .claude/skills/agentbase/scripts/vcr.sh robot create --name NAME --repo-id RID --policies PID1,PID2 --output-file <path>` — ask the user where to save the credentials file. The secretKey cannot be retrieved again from the API.
+4. **Verify credentials** — `bash .claude/skills/agentbase/scripts/check_credentials.sh registry --credentials-file <path>`
+5. **Docker login** — `bash .claude/skills/agentbase/scripts/docker_login.sh`
+
+**You MUST read `references/vcr-ops.md`** for full API details, curl commands, and detailed workflows. Do NOT execute vCR operations without reading it first.
+
+## Docker Login Verification (Before Push)
+
+Before pushing an image, always verify Docker is logged in with the correct host and username. This prevents confusing "denied" or "unauthorized" errors mid-push.
+
+### Check current login status
+
+Verify Docker is logged in to vCR by attempting to pull a nonexistent image. This method works across all platforms and credential helpers without triggering OS-level privacy prompts:
+
+```bash
+docker pull vcr.vngcloud.vn/{repoBackendName}/nonexistent:test 2>&1
+```
+
+- **"not found"** or **"manifest unknown"** — Auth is working, Docker is logged in.
+- **"unauthorized"** or **"denied"** — Docker is **not logged in** to vCR. Run `docker login vcr.vngcloud.vn` first.
+
+### Verify the username matches the robot account
+
+If Docker is logged in but pushes still fail with "denied", the logged-in username may not match the robot account. Re-login using the credential helper script:
+
+```bash
+bash .claude/skills/agentbase/scripts/docker_login.sh
+```
+
+This reads credentials from the user's registry credentials file (passed via `--credentials-file <path>`) and uses `--password-stdin` so the password never appears in the command line or stdout. Then re-run the pull verification above to confirm auth works.
+
+### Quick verification checklist
+
+Before running `docker push`:
+- [ ] `docker pull vcr.vngcloud.vn/{repoBackendName}/nonexistent:test` returns "not found" (not "unauthorized")
+- [ ] Logged-in username is the full robot account `backendName` (e.g., `109072-my-account`)
+- [ ] Image is tagged with the full path: `vcr.vngcloud.vn/{repoBackendName}/{imageName}:{tag}`
 
 ---
 
 ## Runtime Service Contract
 
-Read the shared Runtime Service Contract at `/agentbase` skill's `references/runtime-contract.md` for container requirements (port 8080, health check, request headers, auto-injected credentials).
+**You MUST read** the shared Runtime Service Contract at `/agentbase` skill's `references/runtime-contract.md` for container requirements (port 8080, health check, request headers, auto-injected credentials). Do NOT deploy without reading it first.
+
+## Known API Quirks (vCR)
+
+- **Repository names must be unique** — creating a repo with a `repoName` that already exists will fail. Always list all repos and filter client-side to check for duplicates before creating.
+- **Pagination is 1-based** — always use `page=1` as the first page. `page=0` returns 400.
+- **Re-attach after detach is broken** — detaching a robot account then re-attaching it to the same repo returns 500 (backend bug). **Workaround**: use `PUT /v1/user/{repoUserId}/permission` to update repo access instead of detach/attach.
+- **`name=` is required for image/artifact list** — `GET .../images` and `GET .../artifacts` require the `name` query parameter to be present (even as empty string `name=`), otherwise returns 500.
+- **Repo deletion requires empty repo** — you MUST delete all images in a repository before deleting the repo itself. The API will reject `DELETE /v1/repository/{repoId}` if any images remain. List images with `GET /v1/repository/{repoId}/images?name=&page=1&size=100`, delete each one, then delete the repo.
+- **"all" permission does not work** — when creating a robot account, do NOT use an "all permissions" shortcut. Always grant specific permissions (`pull` + `push`). The "all" option appears to be broken on the backend.
+
+## Troubleshooting
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| 401 Unauthorized | Expired or invalid IAM token | Re-obtain token with valid `client_id`/`client_secret` |
+| 403 Forbidden | Service account lacks permissions | Check IAM roles at https://iam.console.vngcloud.vn |
+| Image pull failure | Wrong `imageUrl` or missing `imageAuth` | Verify image URL, add registry credentials in `imageAuth` |
+| Status stuck on `CREATING` | Container failing to start | Check logs via `/agentbase-monitor`, verify port 8080 and `/health` endpoint |
+| Status `ERROR` | Container crash or health check failure | Check runtime logs for tracebacks, ensure `GET /health` returns 200 |
+| Endpoint returns 502 | Container not ready or crashed | Wait for ACTIVE status, check container logs for errors |
+| 400 Bad Request on list images | Missing `name=` query param (vCR) | Always include `name=` (even empty) in image/artifact list requests |
+| 400 Bad Request on pagination | Using `page=0` | Pagination is 1-based; use `page=1` for the first page |
+| 500 on re-attach robot account | Backend bug on detach/re-attach (vCR) | Use `PUT /v1/user/{id}/permission` to update access instead |
+| Repo deletion fails (not empty) | Repo still contains images (vCR) | Delete all images first, then retry repo deletion |
+| Repo creation fails (duplicate) | `repoName` already exists (vCR) | List all repos and filter client-side to find the existing repo |
+| Docker push denied | Robot account lacks push permission | Check robot account permissions via `GET /v1/user/permissions` |
+| Docker login fails | Wrong username format | Use the full `backendName` (e.g., `109072-my-account`), not just the chosen name |
+| Docker push unauthorized | Logged in with wrong account | Re-login using `bash .claude/skills/agentbase/scripts/docker_login.sh` |
+| Docker push unauthorized | Credential helper overrides login | Re-login using `bash .claude/skills/agentbase/scripts/docker_login.sh` |

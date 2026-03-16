@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # GreenNode AgentBase IAM token helper
 # Usage: TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)
-# Caches token in .greennode_token_cache, validates expiry via JWT exp claim.
+# Caches token in .agentbase/token_cache, validates expiry via JWT exp claim.
 # Pass --force to skip cache and fetch a new token.
 
 set -euo pipefail
 
-CACHE_FILE=".greennode_token_cache"
+AGENTBASE_DIR=".agentbase"
+CACHE_FILE="$AGENTBASE_DIR/token_cache"
 SAFETY_MARGIN=60  # seconds before actual expiry to consider token stale
+
+# Ensure .agentbase directory exists with restricted permissions
+mkdir -p "$AGENTBASE_DIR"
+chmod 700 "$AGENTBASE_DIR"
 
 # Load credentials from .greennode.json if env vars not set
 if [ -z "${GREENNODE_CLIENT_ID:-}" ] || [ -z "${GREENNODE_CLIENT_SECRET:-}" ]; then
@@ -32,7 +37,7 @@ if [ "${1:-}" != "--force" ] && [ -f "$CACHE_FILE" ]; then
   decoded=$(echo "$payload" | base64 -d 2>/dev/null || echo "$payload" | base64 -D 2>/dev/null || echo '{}')
   exp=$(echo "$decoded" | jq -r '.exp // 0' 2>/dev/null || echo 0)
   now=$(date +%s)
-  if [ "$exp" -gt "$((now + SAFETY_MARGIN))" ] 2>/dev/null; then
+  if [[ "$exp" =~ ^[0-9]+$ ]] && [ "$exp" -gt "$((now + SAFETY_MARGIN))" ] 2>/dev/null; then
     echo "$cached_token"
     exit 0
   fi
@@ -47,7 +52,13 @@ response=$(curl -s -X POST "https://iam.api.vngcloud.vn/accounts-api/v2/auth/tok
 token=$(echo "$response" | jq -r '.access_token // empty')
 
 if [ -z "$token" ]; then
-  echo "ERROR: Failed to fetch token: $response" >&2
+  # Only show safe error info — never dump raw response (may contain credential-adjacent data)
+  error_msg=$(echo "$response" | jq -r '.error // .message // empty' 2>/dev/null)
+  if [ -n "$error_msg" ]; then
+    echo "ERROR: Failed to fetch token: $error_msg" >&2
+  else
+    echo "ERROR: Failed to fetch token. Check credentials with: bash .claude/skills/agentbase/scripts/check_credentials.sh iam" >&2
+  fi
   exit 1
 fi
 

@@ -34,7 +34,7 @@ AgentBase is a dedicated infrastructure platform for enterprise AI agents by Gre
 ### 4. Observability
 - Accessed via Runtime Service API
 - Runtime and endpoint logs, CPU/RAM metrics
-- See `/agentbase-observe` skill for log viewing and debugging
+- See `/agentbase-monitor` skill for log viewing and debugging
 
 ## Authentication (All Services)
 
@@ -93,11 +93,11 @@ $env:GREENNODE_CLIENT_SECRET = "<your-client-secret>"
 }
 ```
 
-> **Credential storage guide**: IAM credentials (`client_id`, `client_secret`) go in environment variables or `.greennode.json`. LLM configuration (`AIP_API_KEY`, `AIP_BASE_URL`, `LLM_MODEL`) goes in `.env`. These are separate concerns — IAM credentials authenticate with GreenNode platform APIs, while `.env` holds application-level config like LLM provider settings.
+> **Credential storage guide**: IAM credentials (`client_id`, `client_secret`) go in environment variables or `.greennode.json`. LLM configuration (`LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`) goes in `.env`. These are separate concerns — IAM credentials authenticate with GreenNode platform APIs, while `.env` holds application-level config like LLM provider settings. The agent supports any OpenAI-compatible LLM provider (GreenNode AIP, OpenAI, Ollama, etc.).
 
 ### Step 4: Get Bearer Token
 
-Use the token script: `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)`. It caches the token in `.greennode_token_cache` and validates expiry via JWT `exp` claim. On 401: re-run with `--force`.
+Use the token script: `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)`. It caches the token in `.agentbase/token_cache` and validates expiry via JWT `exp` claim. On 401: re-run with `--force`.
 
 **Never fetch tokens with inline curl — always use the token script.**
 
@@ -154,7 +154,7 @@ from greennode_agentbase.memory.models import (
     MemoryRecordSearchRequest,
 )
 # For long-term memory, use MemoryClient in tool-based approach
-# (remember/recall tools). See /agentbase-memory for details.
+# (remember/recall tools). See /agentbase-manage memory for details.
 ```
 
 **Configuration** (priority: env vars > .greennode.json > defaults):
@@ -170,7 +170,7 @@ from greennode_agent_bridge import (
 )
 ```
 
-> **Long-term memory**: For long-term memory operations (semantic search, fact storage/retrieval), use tool-based approach with `MemoryClient` SDK (`remember`/`recall` tools). See `/agentbase-memory` for details.
+> **Long-term memory**: For long-term memory operations (semantic search, fact storage/retrieval), use tool-based approach with `MemoryClient` SDK (`remember`/`recall` tools). See `/agentbase-manage memory` for details.
 
 ## Runtime Service Contract
 
@@ -220,16 +220,9 @@ When any AgentBase skill needs IAM credentials and the user does not have a serv
 Inform the user that they need to create an IAM Service Account manually, and direct them to the instructions in the **"Authentication (All Services)"** section above (Step 1 through Step 3). Provide the direct link: https://iam.console.vngcloud.vn/service-accounts
 
 ## Available Skills
-- `/agentbase-wizard` - Guided full lifecycle wizard (start here if new)
-- `/agentbase-init` - Scaffold a new agent project
-- `/agentbase-identity` - Manage agent identities
-- `/agentbase-auth` - Configure outbound authentication
-- `/agentbase-runtime` - Manage runtimes and endpoints
-- `/agentbase-memory` - Work with memory service
-- `/agentbase-deploy` - Full deploy workflow
-- `/agentbase-test` - Test and validate agent before deploying
-- `/agentbase-observe` - View logs, metrics, and debug running agents
-- `/agentbase-status` - Dashboard of all deployed resources
+- `/agentbase-wizard` - Guided full lifecycle wizard (start here if new). Also handles project scaffolding (`/agentbase-wizard init`) and testing (`/agentbase-wizard test`)
+- `/agentbase-manage` - Manage agent identities, outbound authentication, and memory service
+- `/agentbase-deploy` - Full deploy workflow, runtime management, and container registry (vCR)
+- `/agentbase-monitor` - View logs, metrics, status dashboard, and debug running agents
 - `/agentbase-teardown` - Clean up and remove all resources for a project
 - `/aip` - Manage GreenNode AI Platform resources (API keys, models)
-- `/vcr` - Manage Docker repositories on GreenNode Container Registry

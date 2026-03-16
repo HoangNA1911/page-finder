@@ -1,7 +1,7 @@
 ---
 name: aip
-description: Manage platform LLM model access and API keys for AI agents. Use when user wants to set up LLM access, get a platform API key for calling language models, browse available models on the platform, choose which LLM to use, configure model access for their agent, check model rate limits, or get an OpenAI-compatible endpoint and key from the platform. Also trigger when user says "which models are available", "set up LLM", "I need an API key for the model", "configure LLM access", "which LLM should I use", "get platform API key", "get LLM key", "model access", "list models", "available models", "LLM key", "set up model", "connect to LLM", or wants their agent to call language models via the platform. When user says "API key" without specifying an external service name (OpenAI, Google, Slack, etc.), default to this skill (platform LLM key). DO NOT use for AgentBase runtime management (use /agentbase-runtime) or agent identity registration (use /agentbase-identity). DO NOT use for storing API keys for external services (OpenAI, Google, Slack, etc.) — use /agentbase-auth instead.
-argument-hint: <api-keys|models> <list|create|get|delete> [name-or-uuid]
+description: Manage platform LLM model access and API keys for AI agents. Use when user wants to set up LLM access, get a platform API key, browse available models, choose which LLM to use, configure model access, check rate limits, or get an OpenAI-compatible endpoint. Trigger for "which models are available", "set up LLM", "API key for the model", "list models", "LLM key", "connect to LLM". When user says "API key" without specifying an external service name, default to this skill. DO NOT use for storing API keys for external services (OpenAI, Google, Slack) — use /agentbase-manage auth instead.
+argument-hint: <api-keys|models> <list|create|get|update|delete|metadata|enable|disable|rate-limit> [name-or-uuid]
 user-invocable: true
 ---
 
@@ -11,30 +11,20 @@ Manage API keys and browse LLM models on the GreenNode AI Platform (MAAS). API k
 
 **LLM Endpoint (OpenAI-compatible):** `https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1`
 
-## Authentication & Endpoints
+Use `bash .claude/skills/agentbase/scripts/aip.sh help` for full command reference.
 
-Read the shared auth setup reference at `/agentbase` skill's `references/auth-setup.md` for full IAM credential configuration. In brief: check for `GREENNODE_CLIENT_ID` and `GREENNODE_CLIENT_SECRET` in environment variables or `.greennode.json` in the **current working directory only** (do NOT search recursively or look outside the current directory), then use `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)` to obtain a token. On 401: re-run with `--force`.
+## Authentication
 
-**IMPORTANT:** Before constructing any API URL, read `/agentbase` skill's `references/endpoints.md` for the domain validation whitelist. Only use domains listed there.
-
-**This skill uses TWO different domains — do NOT confuse them:**
-
-| Purpose | Base URL |
-|---------|----------|
-| Management API (API key CRUD, model listing) | `https://aiplatform-hcm.api.vngcloud.vn` |
-| LLM Endpoint (OpenAI-compatible inference) | `https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1` |
-
-- To list/create/delete API keys → `https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys`
-- To list/inspect models → `https://aiplatform-hcm.api.vngcloud.vn/v1/models`
-- To call LLM at runtime → `https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1`
+Read the shared auth setup reference at `/agentbase` skill's `references/auth-setup.md` for full IAM credential configuration. In brief: run `bash .claude/skills/agentbase/scripts/check_credentials.sh iam` to verify credentials are configured, then use `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)` to obtain a token. **NEVER read `.greennode.json` or `.env` directly** — always use the helper scripts. On 401: re-run with `--force`. If `check_credentials.sh iam` returns MISSING, **STOP — you MUST read** the **"If Credentials Are Not Found"** section in `/agentbase` skill's `references/auth-setup.md` and follow it exactly. Do NOT skip this or provide your own credential setup instructions.
 
 ## Interaction Guidelines
 
+- **Never assume API response structure** — always inspect the actual response first before extracting or filtering data. Do not guess field names.
 - **Guide first, act only when asked** — if the user asks "how to" manage API keys or browse models, respond with instructions and guidance only. Do NOT execute API calls or create resources unless they explicitly ask you to do it for them.
-- **Confirm before executing (HARD GATE)** — before performing any action (create, delete, enable/disable model, list), present a clear summary of what will be done (including all parameters and values) and ask the user to confirm. Do NOT auto-execute. Only proceed when the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `ship it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, additional info, or ambiguous text), treat it as adjustment input — update the plan and re-present the full summary for confirmation again. NEVER interpret a non-confirmation response as approval. For destructive operations (delete API key), additionally warn that the action is irreversible.
+- **Confirm before executing (HARD GATE)** — before performing any mutating action (create, delete, enable/disable model), present a clear summary of what will be done (including all parameters and values) and ask the user to confirm. Read-only operations (list, get, metadata, rate-limit) proceed directly without confirmation. Do NOT auto-execute. Only proceed when the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `ship it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, additional info, or ambiguous text), treat it as adjustment input — update the plan and re-present the full summary for confirmation again. NEVER interpret a non-confirmation response as approval. For destructive operations (delete API key), additionally warn that the action is irreversible.
 - **Never auto-decide parameters** — when an action requires parameters (e.g., API key name, model UUID), always ask the user for each required value. You may recommend sensible defaults or examples, but never auto-select or impose values without the user's explicit agreement.
 - **Present options, let user choose** — when there are multiple choices (e.g., existing API keys, available models), list the available options and let the user pick. Do not make the choice for them.
-- **Dry-run support**: When user requests `--dry-run` or preview, show the exact API request (method, URL, headers, payload) and explain the expected outcome WITHOUT executing. Let user review before proceeding.
+- **Dry-run support**: When user requests `--dry-run` or preview, show the exact command and API request that would be sent (method, URL, payload) and explain the expected outcome WITHOUT executing. The scripts do not support a `--dry-run` flag — construct the preview manually. Let user review before proceeding.
 - **Always read full API response body** — when calling platform APIs, capture and read the full JSON response (not just status codes). This avoids misidentifying field names or data structures, ensures correct field extraction, and enables better error handling and debugging.
 
 ---
@@ -46,96 +36,57 @@ API keys grant access to LLM models through the OpenAI-compatible endpoint. Once
 ### api-keys list
 List all API keys for the current account.
 
-- **API:** `GET /v1/api-keys`
-- **Query params:** `name` (filter by name), `page` (starts from 1), `size`
+```bash
+bash .claude/skills/agentbase/scripts/aip.sh api-keys list [--name NAME] [--page N] [--size N]
+```
 
 **Note**: AI Platform uses 1-indexed pagination (page=1 is first page).
-
-```bash
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys?page=1&size=20" \
-  -H "Authorization: Bearer $TOKEN"
-```
 
 Response contains a paginated list with fields: `listData` (array of keys), `page`, `pageSize`, `totalPage`, `totalItem`. Each key has: `id`, `name`, `key`, `status`, `isDefault`, `models`, `createdAt`.
 
 ### api-keys create [name]
-Create a new API key. **This operation is async** — poll until status is `ACTIVE`.
+Create a new API key. The script sends the request, saves the key to `.env`, and returns immediately. You must poll `api-keys get <name>` until status is `ACTIVE`.
 
-- **API:** `POST /v1/api-keys`
-- **Body:** `{"name": "my-api-key", "isDefault": false}`
 - **Name constraints:** 5-50 chars, pattern `^[a-z0-9\-]{5,50}$` (lowercase letters, digits, hyphens only)
 
-**Step 1 — Submit creation:**
 ```bash
-curl -X POST "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "my-agent-key"}'
+bash .claude/skills/agentbase/scripts/aip.sh api-keys create --name my-agent-key [--default]
 ```
 
-**Step 2 — Poll until ACTIVE** (retry every 3s, up to ~30s):
-```bash
-# Repeat until .data.status == "ACTIVE"
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys/my-agent-key" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-The `key` field in the response is the actual API key value. Save it immediately as it may not be retrievable later.
-
-**If creation fails with a quota error** (e.g. 400/409 indicating quota exhausted), do NOT retry. Instead:
-1. List all existing API keys using `GET /v1/api-keys`.
+**If creation fails with a quota error** (e.g. 400/409 indicating quota exhausted), do NOT auto-retry. Instead:
+1. List all existing API keys using `aip.sh api-keys list`.
 2. Present the list to the user and explain that their API key quota is full.
 3. Suggest the user **delete an unused key** to free up quota. Ask which key they want to delete.
-4. After deletion completes (poll until 404), retry creating the new key.
+4. After the user confirms deletion, delete the key. Note: deletion is **async** — you must poll `aip.sh api-keys get <name>` every 5-10 seconds until you get a 404 (key no longer exists). Wait for deletion to complete before proceeding. If polling doesn't complete within 2-3 minutes, inform the user that the operation is taking longer than expected.
+5. Retry creating the new key **once**. If creation fails again, inform the user that the issue is not quota-related and ask them to check their account status or billing. Do NOT loop — max 1 retry after a deletion.
 
 After creating a key, remind the user:
 > Your API key can be used as an OpenAI-compatible key:
 > - **Base URL:** `https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1`
-> - **API Key:** *(the key from the response)*
+> - **API Key:** saved to `.env` as `LLM_API_KEY`. Verify with `bash .claude/skills/agentbase/scripts/check_credentials.sh llm`
 
 ### api-keys get [name]
 Get details of a specific API key.
 
-- **API:** `GET /v1/api-keys/{apiKeyName}`
-
 ```bash
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys/my-agent-key" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/aip.sh api-keys get my-agent-key
 ```
 
 ### api-keys update [name]
 Update an API key (currently supports setting default status).
 
-- **API:** `PUT /v1/api-keys/{apiKeyName}`
-- **Body:** `{"isDefault": true}`
-
 ```bash
-curl -X PUT "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys/my-agent-key" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"isDefault": true}'
+bash .claude/skills/agentbase/scripts/aip.sh api-keys update my-agent-key --default true
 ```
 
 ### api-keys delete [name]
-Delete an API key. Confirm with the user before proceeding. **This operation is async** — poll until the key no longer exists (404).
+Delete an API key. Confirm with the user before proceeding. The script sends the DELETE request and returns immediately. You must poll `api-keys get <name>` until you get a 404 to confirm deletion.
 
-- **API:** `DELETE /v1/api-keys/{apiKeyName}`
-
-**Step 1 — Submit deletion:**
 ```bash
-curl -X DELETE "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys/my-agent-key" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/aip.sh api-keys delete my-agent-key
 ```
 
-**Step 2 — Poll until 404** (retry every 3s, up to ~30s):
-```bash
-# Repeat until HTTP 404 is returned (key no longer exists)
-curl -s -o /dev/null -w "%{http_code}" \
-  -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/api-keys/my-agent-key" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Confirm deletion to the user only after receiving 404.
+Confirm deletion to the user only after polling confirms the key is gone (404 response). Do NOT confirm immediately after the script returns — deletion is async.
 
 ---
 
@@ -146,66 +97,42 @@ Browse, inspect, and enable/disable available LLM models. These models are acces
 ### models list
 List available models with optional filters.
 
-- **API:** `GET /v1/models`
-- **Query params:**
-  - `name` — filter by model name
-  - `modelTypes` — filter by type (array, e.g. `modelTypes=chat&modelTypes=embedding`)
-  - `providers` — filter by provider (array)
-  - `useCases` — filter by use case (array)
-  - `status` — filter by status
-  - `resourceType` — filter by resource type
-  - `zone` — filter by zone
-  - `page` (starts from 1), `size` — pagination
-
 ```bash
 # List all models
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/models?page=1&size=20" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/aip.sh models list
 
-# Filter by provider
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/models?providers=openai&page=1&size=20" \
-  -H "Authorization: Bearer $TOKEN"
+# Filter by provider and type
+bash .claude/skills/agentbase/scripts/aip.sh models list --providers openai --types chat --status ENABLED
 ```
+
+> **Tip**: Use `bash .claude/skills/agentbase/scripts/aip.sh models metadata` to discover valid filter values for `--providers`, `--types`, and `--status`.
 
 Response contains: `listData` (array of models), `page`, `pageSize`, `totalPage`, `totalItem`. Key fields in each model: `uuid`, `name`, `code`, `path`, `description`, `modelStatus`, `isFree`, `provider`, `types`.
 
-### models detail [modelUuid]
+### models get [modelUuid]
 Get detailed information about a specific model.
 
-- **API:** `GET /v1/models/detail/{modelUuid}`
-
 ```bash
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/models/detail/MODEL_UUID" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/aip.sh models get MODEL_UUID
 ```
 
 ### models metadata
 Get available filter options (providers, types, use cases) for model listing.
 
-- **API:** `GET /v1/models/metadata`
-
 ```bash
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/models/metadata" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/aip.sh models metadata
 ```
 
 This is useful to discover what providers, model types, and use cases are available before filtering the model list.
 
 ### models enable [modelUuid]
-Enable or disable an LLM model for your account. **This operation is async (v2)** — the API initiates a workflow and returns immediately.
-
-- **API:** `POST /v2/models/user-settings`
-- **Body:** Array of `{ "modelUuid": "...", "enabled": true|false }`
+Enable an LLM model for your account.
 
 ```bash
-# Enable a model
-curl -X POST "https://aiplatform-hcm.api.vngcloud.vn/v2/models/user-settings" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '[{"modelUuid": "MODEL_UUID", "enabled": true}]'
+bash .claude/skills/agentbase/scripts/aip.sh models enable MODEL_UUID
 ```
 
-After enabling, verify by fetching the model detail (`GET /v1/models/detail/{modelUuid}`) and checking `isEnabled == true`.
+After enabling, verify by fetching the model detail and checking `isEnabled == true`. The enable operation is synchronous — verify immediately after the call returns.
 
 **Billing errors:** If the enable request fails with a billing-related error (e.g. 400/402/403 indicating unpaid balance, insufficient credits, or billing not activated), do NOT retry. Instead:
 1. Inform the user that the operation failed due to a billing issue.
@@ -213,14 +140,18 @@ After enabling, verify by fetching the model detail (`GET /v1/models/detail/{mod
 3. Direct them to the GreenNode AI Platform console at https://aiplatform.console.vngcloud.vn/models to review their account and billing status.
 4. Once billing is resolved, they can retry enabling the model.
 
+### models disable [modelUuid]
+Disable an LLM model for your account.
+
+```bash
+bash .claude/skills/agentbase/scripts/aip.sh models disable MODEL_UUID
+```
+
 ### models rate-limit [modelUuid]
 Check rate limit configuration for a specific model.
 
-- **API:** `GET /v1/models/rate-limit/{modelUuid}`
-
 ```bash
-curl -X GET "https://aiplatform-hcm.api.vngcloud.vn/v1/models/rate-limit/MODEL_UUID" \
-  -H "Authorization: Bearer $TOKEN"
+bash .claude/skills/agentbase/scripts/aip.sh models rate-limit MODEL_UUID
 ```
 
 ---
@@ -238,7 +169,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="MODEL_PATH",  # use the `path` field from model detail (not `code`)
+    model="MODEL_PATH",  # use the `path` field from model detail (not `code`). If `path` is missing, use `code`.
     messages=[{"role": "user", "content": "Hello!"}],
 )
 print(response.choices[0].message.content)
@@ -253,7 +184,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "MODEL_PATH",  // use the `path` field from model detail (not `code`)
+  model: "MODEL_PATH",  // use the `path` field from model detail (not `code`). If `path` is missing, use `code`.
   messages: [{ role: "user", content: "Hello!" }],
 });
 ```
@@ -268,7 +199,7 @@ const response = await client.chat.completions.create({
 | 403 Forbidden | Service account lacks permissions | Check IAM permissions at GreenNode IAM console https://iam.console.vngcloud.vn |
 | 404 Not Found | API key name or model UUID not found | Verify with a `list` operation |
 | 409 Conflict | API key name already exists | Choose a different name |
-| Invalid name | Name doesn't match `^[a-z0-9\-]{5,50}$` | Use only lowercase letters, digits, and hyphens (5-50 chars) |
+| Invalid name | Name doesn't match `^[a-z0-9\-]{5,50}$` | Use only lowercase letters, digits, and hyphens (5-50 chars). Note: this pattern differs from Identity service which allows uppercase and underscores (`^[a-zA-Z0-9_-]+$`, 3-50 chars) |
 | 400/402/403 on model enable | Billing issue (unpaid balance, no credits, billing not activated) | Check and resolve billing at https://aiplatform.console.vngcloud.vn/models before retrying |
 
 ## Instructions
@@ -278,21 +209,22 @@ const response = await client.chat.completions.create({
    - **api-keys**: "I want to create/manage API keys for accessing LLM models"
    - **models**: "I want to see what LLM models are available and their details"
 3. **When the user needs an API key, always let the user decide:**
-   - First, list existing API keys using `GET /v1/api-keys`.
+   - First, list existing API keys using `aip.sh api-keys list`.
    - Present the existing keys to the user (if any) and explicitly ask them to choose one of the following options:
      - **Use an existing key** — let the user pick which one from the list
      - **Create a new key** — proceed to create a new API key
    - Do NOT auto-select or auto-use any existing key. The user must explicitly choose.
+   - If the user is unsure which key to use, list all keys with their names and status, and recommend the one marked `isDefault: true`. If the user says "use any" or "just pick one", use the default key.
 4. **When creating a new API key fails with a quota error:**
    - Do NOT retry the creation. Explain that the API key quota is full.
    - List all existing API keys and present them to the user.
    - Guide the user to **delete an unused key** to free up quota. Ask which key they want to delete.
-   - After deletion completes (poll until 404), retry creating the new key.
+   - After deletion completes, retry creating the new key.
 5. For `api-keys create`, ask for the key name if not provided. Validate it matches `^[a-z0-9\-]{5,50}$`.
-6. **api-keys create is async**: after POST, poll GET /v1/api-keys/{name} every 3s until `.data.status == "ACTIVE"` (timeout ~30s). Only show the key and OpenAI usage info after ACTIVE is confirmed.
-7. **api-keys delete is async**: after DELETE, poll GET /v1/api-keys/{name} every 3s until HTTP 404 is returned (timeout ~30s). Only confirm deletion to the user after 404.
+6. **api-keys create is async**: the script sends the POST request, saves the key to `.env`, and returns immediately. You must then poll the status yourself by calling `aip.sh api-keys get <name>` every 5-10 seconds until the `status` field is `ACTIVE`. Only show the key and OpenAI usage info after confirming ACTIVE.
+7. **api-keys delete is async**: the script sends the DELETE request and returns immediately. You must then poll by calling `aip.sh api-keys get <name>` every 5-10 seconds until you get a 404 (key no longer exists). Only confirm deletion to the user after the key is gone.
 8. After creating an API key, always show the OpenAI-compatible usage info (base URL + key).
-9. When listing or showing model details, highlight the model `path` field — this is what must be passed as the `model` parameter when calling the LLM API (not `code`). Do NOT show pricing/billing info (`inputPrice`, `outputPrice`) to the user.
+9. When listing or showing model details, highlight the model `path` field — this is what must be passed as the `model` parameter when calling the LLM API (not `code`; if `path` is missing, fall back to `code`). Do NOT show pricing/billing info (`inputPrice`, `outputPrice`) to the user — pricing may be subject to negotiated contracts; refer users to the billing dashboard instead.
 10. When the user wants to set up LLM access for an agent, guide them through: (1) browse models to pick one, (2) list existing API keys and reuse one, or create a new key if needed, (3) use the key with the OpenAI SDK pointing to the GreenNode endpoint.
 11. **When the user needs to pick a model**, list available models filtered by `status=ENABLED` and sorted by most recent first, then **let the user choose**. Do not auto-select or recommend a specific model unless the user explicitly asks for a recommendation.
-12. **When enabling a model** via `POST /v2/models/user-settings`, if the request fails with a billing-related error (400/402/403 with messages about billing, credits, or payment), do NOT retry. Inform the user that the operation failed due to a billing issue and that they need to check and resolve their billing status at https://aiplatform.console.vngcloud.vn/models before retrying. Do not attempt workarounds — billing issues must be resolved by the user.
+12. **When enabling a model** via `aip.sh models enable`, if the request fails with a billing-related error (400/402/403 with messages about billing, credits, or payment), do NOT retry. Inform the user that the operation failed due to a billing issue and that they need to check and resolve their billing status at https://aiplatform.console.vngcloud.vn/models before retrying. Do not attempt workarounds — billing issues must be resolved by the user.

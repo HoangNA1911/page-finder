@@ -12,4 +12,5 @@ Containers deployed on AgentBase Runtime must meet these requirements:
      - `X-GreenNode-AgentBase-Custom-*` → collected into `context.request_headers` (along with `Authorization`), for passing custom data to the agent
 4. **Automatic runtime management** (do not set manually):
    - The IAM service account and Agent Identity are managed by the AgentBase runtime system and injected into the container as `GREENNODE_CLIENT_ID`, `GREENNODE_CLIENT_SECRET`, `GREENNODE_AGENT_IDENTITY`
+   - `GREENNODE_ENDPOINT_URL` is also auto-injected — contains the endpoint URL to call into the agent
    - The SDK automatically uses these — no manual credential configuration needed in agent code
