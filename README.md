@@ -16,7 +16,7 @@ claude
 
 # Then use slash commands or natural language
 /agentbase-wizard                    # Guided wizard from A to Z
-/agentbase-init my-agent             # Scaffold a new project
+/agentbase-wizard init my-agent      # Scaffold a new project
 /agentbase-deploy                    # Deploy agent
 "Create a new agent with LangGraph"  # Claude picks the right skill
 ```
@@ -103,21 +103,41 @@ Scaffold → Configure → Code → Test → Deploy → Monitor → Teardown
 
 | # | Command | What it does |
 |---|---------|-------------|
-| 1 | `/agentbase-wizard` | 9-step guided wizard — start here if you're new |
-| 2 | `/agentbase` | Platform reference & information lookup |
-| 3 | `/agentbase-init` | Scaffold a new agent project (FastAPI, LangChain, LangGraph) |
-| 4 | `/agentbase-identity` | Register/manage agent identity on the platform |
-| 5 | `/agentbase-auth` | Store API keys & OAuth2 credentials for external services |
-| 6 | `/agentbase-memory` | Manage conversation history & long-term memory stores |
-| 7 | `/aip` | Create API keys & browse LLM models on AI Platform |
-| 8 | `/agentbase-test` | Validate code, test locally, test in Docker, preflight check |
-| 9 | `/agentbase-deploy` | End-to-end deploy: build → push → deploy → verify |
-| 10 | `/agentbase-runtime` | CRUD runtimes, endpoints, versions, autoscaling |
-| 11 | `/agentbase-observe` | View runtime logs, endpoint logs, CPU/RAM metrics |
-| 12 | `/agentbase-status` | Dashboard of all resources (identities, runtimes, memory, etc.) |
-| 13 | `/vcr` | Manage Docker repos & robot accounts on vCR registry |
-| 14 | `/agentbase-teardown` | Delete all resources for a project (with dry-run) |
-| 15 | `/skill-creator` | Create, improve, eval, and benchmark skills |
+| 1 | `/agentbase-wizard` | Full lifecycle wizard — start here if you're new |
+| 2 | `/agentbase` | Platform reference & getting-started guide |
+| 3 | `/agentbase-manage` | Manage agent identities, external auth, and memory |
+| 4 | `/aip` | Create API keys & browse LLM models on AI Platform |
+| 5 | `/agentbase-deploy` | Deploy pipeline, runtime management, and container registry (vCR) |
+| 6 | `/agentbase-monitor` | Logs, metrics, and resource dashboard |
+| 7 | `/agentbase-teardown` | Delete all resources for a project (with dry-run) |
+
+### Subcommands
+
+**`/agentbase-wizard`** — `[init|test|resume|step-N|reset]`
+- `init [name] [--langgraph]` — Scaffold a new agent project
+- `test [validate|local|docker|preflight]` — Test before deploy
+- `resume` — Continue from last completed step
+- *(no args)* — Start full 9-step wizard
+
+**`/agentbase-manage`** — `<identity|auth|memory> <operation> [name]`
+- `identity` — Register/manage agent identities
+- `auth` — Store API keys & OAuth2 credentials for external services
+- `memory` — Conversation history & long-term memory stores
+
+**`/agentbase-deploy`** — `<deploy|runtime|vcr> [operation] [id-or-name]`
+- `deploy` — End-to-end: build → push → deploy → verify
+- `runtime` — CRUD runtimes, endpoints, versions, autoscaling
+- `vcr` — Manage Docker repos & robot accounts on vCR registry
+
+**`/agentbase-monitor`** — `<runtime-logs|endpoint-logs|metrics|dashboard> [runtime-id]`
+- `runtime-logs` — View runtime container logs
+- `endpoint-logs` — View endpoint-specific logs
+- `metrics` — CPU/RAM usage metrics
+- `dashboard` — Unified status of all platform resources
+
+**`/aip`** — `<api-keys|models> <operation> [name-or-uuid]`
+- `api-keys` — Create, list, get, update, delete API keys
+- `models` — Browse, enable, disable, rate-limit LLM models
 
 ### Grouped by Stage
 
@@ -127,28 +147,21 @@ Scaffold → Configure → Code → Test → Deploy → Monitor → Teardown
 │  /agentbase-wizard ─── Start here (guided A→Z)          │
 │  /agentbase ────────── Platform reference                │
 ├─────────────────────────────────────────────────────────┤
-│  BUILD                                                  │
-│  /agentbase-init ───── Scaffold project                  │
-├─────────────────────────────────────────────────────────┤
-│  CONFIGURE                                              │
-│  /agentbase-identity ─ Register agent                    │
-│  /aip ────────────────  API keys & LLM models            │
-│  /agentbase-auth ───── External API credentials          │
-│  /agentbase-memory ─── Memory service                    │
+│  BUILD & CONFIGURE                                      │
+│  /agentbase-wizard init  Scaffold project                │
+│  /agentbase-manage ───── Identity, auth, memory          │
+│  /aip ────────────────── API keys & LLM models           │
 ├─────────────────────────────────────────────────────────┤
 │  TEST & DEPLOY                                          │
-│  /agentbase-test ───── Test before deploy                │
-│  /agentbase-deploy ─── End-to-end deploy                 │
-│  /agentbase-runtime ── Runtime management                │
+│  /agentbase-wizard test  Test before deploy              │
+│  /agentbase-deploy ───── Deploy pipeline & runtimes      │
 ├─────────────────────────────────────────────────────────┤
 │  OPERATE                                                │
-│  /agentbase-observe ── Logs & metrics                    │
-│  /agentbase-status ─── Dashboard                         │
+│  /agentbase-monitor ──── Logs, metrics, dashboard        │
 ├─────────────────────────────────────────────────────────┤
 │  ADVANCED                                               │
-│  /vcr ────────────────  Container Registry               │
-│  /agentbase-teardown ─ Delete resources                  │
-│  /skill-creator ────── Create/improve skills             │
+│  /agentbase-deploy vcr ─ Container Registry              │
+│  /agentbase-teardown ─── Delete resources                │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -159,12 +172,12 @@ Scaffold → Configure → Code → Test → Deploy → Monitor → Teardown
 ### Create a Chatbot from Zero
 
 ```bash
-/agentbase-init my-chatbot --langgraph      # Scaffold
-/aip api-keys create my-chatbot-key         # LLM access
-/agentbase-memory create                    # Memory (optional)
-/agentbase-test local                       # Test
-/agentbase-deploy my-chatbot                # Deploy
-/agentbase-observe runtime-logs <id>        # Monitor
+/agentbase-wizard init my-chatbot --langgraph   # Scaffold
+/aip api-keys create my-chatbot-key             # LLM access
+/agentbase-manage memory create                 # Memory (optional)
+/agentbase-wizard test local                    # Test
+/agentbase-deploy deploy                        # Deploy
+/agentbase-monitor runtime-logs <id>            # Monitor
 ```
 
 ### First Time? Use the Wizard
@@ -177,9 +190,9 @@ Scaffold → Configure → Code → Test → Deploy → Monitor → Teardown
 ### Debug a Failing Agent
 
 ```bash
-/agentbase-observe runtime-logs <runtime-id>
-/agentbase-observe endpoint-logs <runtime-id> <endpoint-id>
-/agentbase-observe metrics <runtime-id>
+/agentbase-monitor runtime-logs <runtime-id>
+/agentbase-monitor endpoint-logs <runtime-id> <endpoint-id>
+/agentbase-monitor metrics <runtime-id>
 ```
 
 ### Tear Down a Project
@@ -214,7 +227,7 @@ Scaffold → Configure → Code → Test → Deploy → Monitor → Teardown
 ## Important Notes
 
 1. **Verify credentials first** – most errors are caused by missing IAM credentials
-2. **Run `/agentbase-test validate`** before deploying
+2. **Run `/agentbase-wizard test validate`** before deploying
 3. **Use `--dry-run`** with teardown to preview before deleting
 4. **Never commit `.env` files** – only commit `.env.example`
 5. **Use the wizard** (`/agentbase-wizard`) if it's your first time
