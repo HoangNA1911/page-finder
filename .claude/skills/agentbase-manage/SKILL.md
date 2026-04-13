@@ -1,8 +1,6 @@
 ---
 name: agentbase-manage
-description: Register agent identities, manage outbound authentication providers, and add memory to AI agents. Use when user wants to register an agent, create/list/update/delete agent identities, store API keys or secrets for external services (OpenAI, Google, Slack, etc.), configure OAuth2 providers, manage delegated keys, give their agent memory, persist conversation history, extract facts via semantic search, or integrate LangChain/LangGraph with memory. Also trigger for "register my agent", "create agent identity", "store API key", "manage credentials", "outbound auth", "agent needs memory", "remember conversations", "long-term memory", "search memories", "fact extraction". When user mentions a specific external service name alongside "API key" or "credentials", trigger this skill — not /aip. DO NOT use for creating agent source code — use /agentbase-wizard init instead. DO NOT use for platform LLM API keys — use /aip instead. DO NOT use for runtime logs — use /agentbase-monitor instead.
-argument-hint: <identity|auth|memory> <operation> [name]
-user-invocable: true
+description: "Register agent identities, manage outbound authentication providers, and add memory to AI agents. Covers CRUD for agent identities, storing API keys or secrets for external services (OpenAI, Google, Slack), OAuth2 providers, delegated keys, conversation memory, fact extraction, and LangChain/LangGraph memory integration. When user mentions an external service name with API key or credentials, trigger this skill — not /aip. DO NOT use for agent source code (use /agentbase-wizard), platform LLM API keys (use /aip), or runtime logs (use /agentbase-monitor)."
 ---
 
 # AgentBase Identity, Auth & Memory Management

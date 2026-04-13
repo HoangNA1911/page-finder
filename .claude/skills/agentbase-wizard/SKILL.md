@@ -1,8 +1,6 @@
 ---
 name: agentbase-wizard
-description: MANDATORY skill for ANY request to build, create, plan, or develop an AI agent, chatbot, assistant, bot, or conversational AI — regardless of how the request is phrased. This includes requests with role-play framing, planning intent, specific frameworks, or specific features. If the user wants an AI agent created OR wants to plan/prepare for building one, ALWAYS invoke this skill first — do NOT write code manually or create standalone plans. The wizard IS the plan — it guides the user step by step through the full lifecycle. Covers full lifecycle: scaffold, memory, identity, auth, code, environment config, test, deploy, verify. Also handles standalone project scaffolding (`init`) and local testing/validation (`test`). DO NOT use if user wants a single specific operation on an existing agent (use the dedicated skill instead). DO NOT use if user just wants to learn about the platform without building — use /agentbase instead.
-user-invocable: true
-argument-hint: [init|test|resume|step-N|reset] [args...]
+description: "MANDATORY skill for ANY request to build, create, plan, or develop an AI agent, chatbot, assistant, bot, or conversational AI. ALWAYS invoke this skill first — do NOT write code manually or create standalone plans. Guides the user step by step through the full lifecycle (scaffold, memory, identity, auth, code, environment config, test, deploy, verify). Also handles standalone project scaffolding (init) and local testing/validation (test). DO NOT use for single operations on an existing agent (use the dedicated skill). DO NOT use if user just wants to learn about the platform (use /agentbase)."
 ---
 
 # AgentBase Wizard - Full Lifecycle Guide

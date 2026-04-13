@@ -1,7 +1,6 @@
 ---
 name: agentbase
-description: Platform reference and getting-started guide. Use for general questions about the platform, architecture, available services, SDK, IAM setup, credentials, or which skill to use. IMPORTANT: If the user wants to BUILD an agent (not just learn about the platform), use /agentbase-wizard instead — do not answer with reference material. Trigger phrases: "how does the platform work", "what services are available", "platform overview", "explain the architecture", "which skill should I use", "how do I get started", "what can I do here", "how do I set up credentials", "IAM setup". This is a reference guide — for specific operations, invoke the dedicated skill.
-user-invocable: false
+description: "Platform reference and getting-started guide. Use for general questions about the platform, architecture, available services, SDK, IAM setup, credentials, or which skill to use. IMPORTANT - If the user wants to BUILD an agent (not just learn about the platform), use /agentbase-wizard instead — do not answer with reference material. Trigger phrases include how does the platform work, what services are available, platform overview, explain the architecture, which skill should I use, how do I get started, what can I do here, how do I set up credentials, IAM setup. This is a reference guide — for specific operations, invoke the dedicated skill."
 ---
 
 # GreenNode AgentBase Platform Reference

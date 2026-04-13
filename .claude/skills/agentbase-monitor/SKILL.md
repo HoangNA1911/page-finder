@@ -1,8 +1,6 @@
 ---
 name: agentbase-monitor
-description: Monitor, debug, view logs, metrics, and status dashboard for DEPLOYED AI agents. View runtime logs, endpoint logs, and resource metrics (CPU/RAM). Show unified dashboard of all platform resources. Trigger for "show logs", "check logs", "what's wrong with my agent", "agent crashed", "debug my deployed agent", "tail logs", "agent is slow", "agent status", "show dashboard", "platform overview", "what do I have", "list all resources", "show my agents", "inventory", "performance", "check metrics", "resource usage", or any debugging/monitoring of a deployed agent. DO NOT use for managing runtime lifecycle (create/update/delete) — use /agentbase-deploy runtime. DO NOT use for local testing — use /agentbase-wizard test.
-argument-hint: <runtime-logs|endpoint-logs|metrics|dashboard> [runtime-id] [endpoint-id]
-user-invocable: true
+description: "Monitor, debug, view logs, metrics, and status dashboard for DEPLOYED AI agents. View runtime logs, endpoint logs, and resource metrics (CPU/RAM). Show unified dashboard of all platform resources. Trigger for show logs, check logs, what is wrong with my agent, agent crashed, debug my deployed agent, tail logs, agent is slow, agent status, show dashboard, platform overview, what do I have, list all resources, show my agents, inventory, performance, check metrics, resource usage, or any debugging/monitoring of a deployed agent. DO NOT use for managing runtime lifecycle (create/update/delete) — use /agentbase-deploy runtime. DO NOT use for local testing — use /agentbase-wizard test."
 ---
 
 # AgentBase Monitor

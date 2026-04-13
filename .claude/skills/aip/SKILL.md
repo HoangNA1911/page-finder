@@ -1,8 +1,6 @@
 ---
 name: aip
-description: Manage platform LLM model access and API keys for AI agents. Use when user wants to set up LLM access, get a platform API key, browse available models, choose which LLM to use, configure model access, check rate limits, or get an OpenAI-compatible endpoint. Trigger for "which models are available", "set up LLM", "API key for the model", "list models", "LLM key", "connect to LLM". When user says "API key" without specifying an external service name, default to this skill. DO NOT use for storing API keys for external services (OpenAI, Google, Slack) — use /agentbase-manage auth instead.
-argument-hint: <api-keys|models> <list|create|get|update|delete|metadata|enable|disable|rate-limit> [name-or-uuid]
-user-invocable: true
+description: "Manage platform LLM model access and API keys for AI agents. Use when user wants to set up LLM access, get a platform API key, browse available models, choose which LLM to use, configure model access, check rate limits, or get an OpenAI-compatible endpoint. Trigger for which models are available, set up LLM, API key for the model, list models, LLM key, connect to LLM. When user says API key without specifying an external service name, default to this skill. DO NOT use for storing API keys for external services (OpenAI, Google, Slack) — use /agentbase-manage auth instead."
 ---
 
 # GreenNode AI Platform — API Keys & LLM Models

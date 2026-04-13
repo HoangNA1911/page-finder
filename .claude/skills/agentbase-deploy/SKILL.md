@@ -1,18 +1,6 @@
 ---
 name: agentbase-deploy
-description: >
-  Deploy, manage runtimes, and manage container registry for AI agents on GreenNode AgentBase.
-  Part 1 — Deploy: Full end-to-end pipeline (build, push, create/update runtime, verify).
-  Trigger: "deploy my agent", "ship it", "go live", "push to production", "release new version", "redeploy", "update deployment".
-  Part 2 — Runtime Management: Manage existing runtimes, endpoints, scaling, versions without redeploying.
-  Trigger: "list my runtimes", "check runtime status", "scale my agent", "delete runtime", "what flavors are available".
-  Part 3 — Container Registry (vCR): Manage Docker repos, images, robot accounts.
-  Trigger: "create docker repo", "docker registry", "push image", "manage container repository", "docker login".
-  DO NOT use for deploying non-AI-agent applications (React apps, web apps, microservices) — this skill is
-  exclusively for AI agent deployment on GreenNode AgentBase. DO NOT trigger for general Docker questions
-  unrelated to agent deployment or the platform registry. For logs and metrics use /agentbase-monitor.
-argument-hint: <deploy|runtime|vcr> [operation] [id-or-name]
-user-invocable: true
+description: "Deploy, manage runtimes, and manage container registry for AI agents on GreenNode AgentBase. Part 1 — Deploy (build, push, create/update runtime, verify). Trigger for deploy my agent, ship it, go live, push to production, redeploy, update deployment. Part 2 — Runtime Management (endpoints, scaling, versions). Trigger for list my runtimes, check runtime status, scale my agent, delete runtime, what flavors are available. Part 3 — Container Registry vCR (Docker repos, images, robot accounts). Trigger for create docker repo, docker registry, push image, docker login. DO NOT use for non-AI-agent apps. DO NOT trigger for general Docker questions unrelated to the platform. For logs and metrics use /agentbase-monitor."
 ---
 
 # AgentBase Deploy, Runtime & Registry
