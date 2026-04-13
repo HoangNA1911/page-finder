@@ -13,7 +13,7 @@ Request a delegated API key (triggers user-federation flow).
   - `sessionId` (string, optional, UUID) — resume a previous delegation session
   - `forceDelegation` (boolean, optional) — force re-delegation even if a key already exists
 
-> **IMPORTANT**: The `returnUrl` value **must be listed in the `allowedReturnUrls`** of the agent identity being used. If not, the API will reject the request. Update the agent identity via `/agentbase-manage identity update` to add the URL first.
+> **IMPORTANT**: The `returnUrl` value **must be listed in the `allowedReturnUrls`** of the agent identity being used. If not, the API will reject the request. Update the agent identity via `/agentbase-identity` to add the URL first.
 
 **SDK**:
 ```python
@@ -65,7 +65,7 @@ Get a 3-legged OAuth (3LO) token via user authorization flow.
   - `customState` (string, optional, 1-100 chars) — custom state passed through the OAuth2 flow
   - `forceAuthentication` (boolean, optional) — force re-authentication even if a token already exists
 
-> **IMPORTANT**: The `returnUrl` value **must be listed in the `allowedReturnUrls`** of the agent identity being used. If not, the API will reject the request. Update the agent identity via `/agentbase-manage identity update` to add the URL first.
+> **IMPORTANT**: The `returnUrl` value **must be listed in the `allowedReturnUrls`** of the agent identity being used. If not, the API will reject the request. Update the agent identity via `/agentbase-identity` to add the URL first.
 
 **SDK**:
 ```python

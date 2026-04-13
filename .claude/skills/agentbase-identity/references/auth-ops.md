@@ -216,7 +216,7 @@ bash .claude/skills/agentbase/scripts/auth.sh delegated get-key --provider user-
 
 - `customState` (string, optional, max 100 chars) -- custom state to pass through the delegation flow
 
-> **IMPORTANT**: The `returnUrl` parameter **must be included in the `allowedReturnUrls` list** of the agent identity being used. If the URL is not whitelisted in the agent identity, the API will reject the request. Use `/agentbase-manage identity update` to add the URL to the identity's `allowedReturnUrls` if needed.
+> **IMPORTANT**: The `returnUrl` parameter **must be included in the `allowedReturnUrls` list** of the agent identity being used. If the URL is not whitelisted in the agent identity, the API will reject the request. Use `/agentbase-identity` to add the URL to the identity's `allowedReturnUrls` if needed.
 
 ---
 
@@ -355,13 +355,13 @@ bash .claude/skills/agentbase/scripts/auth.sh oauth2 get-3lo-token --provider go
 
 - `customState` (string, optional, max 100 chars) -- custom state to pass through the OAuth2 authorization flow
 
-> **IMPORTANT**: The `returnUrl` parameter **must be included in the `allowedReturnUrls` list** of the agent identity being used. If the URL is not whitelisted in the agent identity, the API will reject the request. Use `/agentbase-manage identity update` to add the URL to the identity's `allowedReturnUrls` if needed.
+> **IMPORTANT**: The `returnUrl` parameter **must be included in the `allowedReturnUrls` list** of the agent identity being used. If the URL is not whitelisted in the agent identity, the API will reject the request. Use `/agentbase-identity` to add the URL to the identity's `allowedReturnUrls` if needed.
 
 ---
 
 ## Auth Prerequisites
 
-Auth operations that retrieve keys or tokens (e.g., `auth apikey retrieve-key`, `auth delegated request-key`, `auth oauth2 m2m-token`, `auth oauth2 3lo-token`) require an **agent identity name**. On AgentBase Runtime, this is automatically managed and injected by the runtime system. For local development, if the user hasn't created one yet, guide them to create an agent identity first using `/agentbase-manage identity` before proceeding with these operations.
+Auth operations that retrieve keys or tokens (e.g., `auth apikey retrieve-key`, `auth delegated request-key`, `auth oauth2 m2m-token`, `auth oauth2 3lo-token`) require an **agent identity name**. On AgentBase Runtime, this is automatically managed and injected by the runtime system. For local development, if the user hasn't created one yet, guide them to create an agent identity first using `/agentbase-identity` before proceeding with these operations.
 
 ## Credential Rotation
 

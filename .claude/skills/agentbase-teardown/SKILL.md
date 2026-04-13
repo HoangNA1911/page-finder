@@ -1,6 +1,6 @@
 ---
 name: agentbase-teardown
-description: "Clean up and remove all platform resources for an agent project. Tears down runtime, identity, auth, memory, registry, and API keys in one go. Use when user wants to tear down, decommission, remove everything, start over, or delete all resources for an agent. DO NOT use for deleting a single resource — use /agentbase-deploy for runtimes, /agentbase-manage for identity/auth/memory. Only use when intent is to remove ALL or MOST resources."
+description: "Clean up and remove all platform resources for an agent project. Tears down runtime, identity, auth, memory, registry, and API keys in one go. Use when user wants to tear down, decommission, remove everything, start over, or delete all resources for an agent. DO NOT use for deleting a single resource — use /agentbase-deploy for runtimes, /agentbase-identity for identity/auth, /agentbase-memory for memory. Only use when intent is to remove ALL or MOST resources."
 ---
 
 # AgentBase Teardown

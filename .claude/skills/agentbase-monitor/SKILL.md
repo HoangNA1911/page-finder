@@ -172,7 +172,7 @@ Agent returns errors (4xx/5xx)?
 ├─ 500 Internal Server Error → Check endpoint logs for traceback (see endpoint-logs above)
 ├─ 502 Bad Gateway → Container crashed or not ready, check runtime logs (see runtime-logs above)
 ├─ 503 Service Unavailable → Container starting up or overloaded, check metrics (see metrics above)
-└─ 401/403 → Check if agent's outbound auth is configured (/agentbase-manage auth)
+└─ 401/403 → Check if agent's outbound auth is configured (/agentbase-identity)
 
 Agent is slow?
 ├─ Check metrics for CPU/RAM (see metrics above)

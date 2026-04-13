@@ -153,7 +153,7 @@ from greennode_agentbase.memory.models import (
     MemoryRecordSearchRequest,
 )
 # For long-term memory, use MemoryClient in tool-based approach
-# (remember/recall tools). See /agentbase-manage memory for details.
+# (remember/recall tools). See /agentbase-memory for details.
 ```
 
 **Configuration** (priority: env vars > .greennode.json > defaults):
@@ -169,7 +169,7 @@ from greennode_agent_bridge import (
 )
 ```
 
-> **Long-term memory**: For long-term memory operations (semantic search, fact storage/retrieval), use tool-based approach with `MemoryClient` SDK (`remember`/`recall` tools). See `/agentbase-manage memory` for details.
+> **Long-term memory**: For long-term memory operations (semantic search, fact storage/retrieval), use tool-based approach with `MemoryClient` SDK (`remember`/`recall` tools). See `/agentbase-memory` for details.
 
 ## Runtime Service Contract
 
@@ -220,8 +220,9 @@ Inform the user that they need to create an IAM Service Account manually, and di
 
 ## Available Skills
 - `/agentbase-wizard` - Guided full lifecycle wizard (start here if new). Also handles project scaffolding (`/agentbase-wizard init`) and testing (`/agentbase-wizard test`)
-- `/agentbase-manage` - Manage agent identities, outbound authentication, and memory service
+- `/agentbase-identity` - Manage agent identities and outbound authentication (API keys, OAuth2)
+- `/agentbase-memory` - Add memory to agents — conversation history and long-term fact extraction
 - `/agentbase-deploy` - Full deploy workflow, runtime management, and container registry (vCR)
 - `/agentbase-monitor` - View logs, metrics, status dashboard, and debug running agents
 - `/agentbase-teardown` - Clean up and remove all resources for a project
-- `/aip` - Manage GreenNode AI Platform resources (API keys, models)
+- `/agentbase-llm` - Manage GreenNode AI Platform resources (API keys, models)

@@ -28,7 +28,7 @@ Check `$ARGUMENTS` to determine which mode to run:
 - **Check before acting** -- each step checks if already completed before doing work
 - **Allow skipping** optional steps (Steps 4 and 5)
 - **Store state** in `.agentbase-state.json` so the wizard can resume if interrupted
-- **Don't duplicate skill logic — INVOKE skills using the Skill tool** before performing any API calls that belong to another skill. Each skill (`/aip`, `/agentbase-manage identity`, `/agentbase-manage auth`, `/agentbase-manage memory`, `/agentbase-deploy`, `/agentbase-deploy vcr`, `/agentbase-monitor`) contains the authoritative API endpoints and procedures. Do NOT construct API URLs from memory — always invoke the relevant skill first so its instructions (including correct domains and URLs) are loaded into context.
+- **Don't duplicate skill logic — INVOKE skills using the Skill tool** before performing any API calls that belong to another skill. Each skill (`/agentbase-llm`, `/agentbase-identity`, `/agentbase-identity`, `/agentbase-memory`, `/agentbase-deploy`, `/agentbase-deploy vcr`, `/agentbase-monitor`) contains the authoritative API endpoints and procedures. Do NOT construct API URLs from memory — always invoke the relevant skill first so its instructions (including correct domains and URLs) are loaded into context.
 - **Never assume API response structure** — always inspect the actual response first before extracting or filtering data. Do not guess field names.
 - **Confirm before every significant action (HARD GATE)** -- present what you are about to do and wait for user approval. Only proceed when the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `ship it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, additional info, or ambiguous text), treat it as adjustment input — update the summary and re-present for confirmation again. NEVER interpret a non-confirmation response as approval
 - **Present a clear summary** at each step transition showing what was completed and what comes next
@@ -62,9 +62,9 @@ Maintain `.agentbase-state.json` in the project directory. Update it after each 
 
 **Goal**: Ensure the user has valid IAM credentials.
 
-> **Note**: This step is about platform IAM credentials (for accessing GreenNode APIs). This is NOT the same as `/agentbase-manage auth`, which manages outbound authentication for external services like OpenAI, Google, etc.
+> **Note**: This step is about platform IAM credentials (for accessing GreenNode APIs). This is NOT the same as `/agentbase-identity`, which manages outbound authentication for external services like OpenAI, Google, etc.
 
-1. Run `bash .claude/skills/agentbase/scripts/check_credentials.sh iam` to verify credentials are configured. **NEVER read `.greennode.json` or `.env` directly** — always use the helper scripts. (Note: internal checks use scripts directly; user-facing operations like API key management use skill invocations like `/aip`.)
+1. Run `bash .claude/skills/agentbase/scripts/check_credentials.sh iam` to verify credentials are configured. **NEVER read `.greennode.json` or `.env` directly** — always use the helper scripts. (Note: internal checks use scripts directly; user-facing operations like API key management use skill invocations like `/agentbase-llm`.)
 2. If credentials are found, verify them by requesting a test token: `TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)`. If a valid `access_token` is returned, credentials are good — proceed. If the request fails (401, empty token), treat as "credentials not found". On 401: re-run with `--force`.
 3. If no credentials found or credentials are invalid: **STOP — you MUST read** the **"If Credentials Are Not Found"** section in `/agentbase` skill's `references/auth-setup.md` and follow it exactly. Do NOT skip this or provide your own credential setup instructions.
 4. Update state: `wizard_step: 1`
@@ -94,11 +94,11 @@ All project files are created flat in the CWD. The user should already be in the
 
 **Goal**: Configure conversation memory if the agent needs it.
 
-**IMPORTANT: If the user wants memory, invoke the `/agentbase-manage memory` skill using the Skill tool** to load the correct API endpoints and procedures before making any API calls.
+**IMPORTANT: If the user wants memory, invoke the `/agentbase-memory` skill using the Skill tool** to load the correct API endpoints and procedures before making any API calls.
 
 1. Ask the user: "Does your agent need conversation memory (to remember past messages across sessions)? If not, we can skip this step."
 2. If yes:
-   - Invoke `/agentbase-manage memory` skill with argument `create` to create a memory store
+   - Invoke `/agentbase-memory` skill with argument `create` to create a memory store
    - After creation, save the returned `memory_id` to `.env`: `bash .claude/skills/agentbase/scripts/save_env_var.sh --key MEMORY_ID --value <memory-id>`
    - Note: Memory integration into agent code will be handled in Step 5 (Customize Agent Code), after all infrastructure is in place.
    - For **Basic** framework agents, memory integration requires using `MemoryClient` SDK directly in `main.py` — import from `greennode_agentbase` and call `insert_memory_records_directly` / `search_memory_records` in the handler.
@@ -117,14 +117,14 @@ All project files are created flat in the CWD. The user should already be in the
 
 2. **If yes — Set up Identity first**, then Auth:
 
-   a. **Identity**: **Invoke the `/agentbase-manage identity` skill using the Skill tool** to load the correct API endpoints and procedures. Then:
+   a. **Identity**: **Invoke the `/agentbase-identity` skill using the Skill tool** to load the correct API endpoints and procedures. Then:
       - List existing identities and let the user pick one or create a new one
       - Check state for a previously configured identity in `.agentbase-state.json` or `.greennode.json`
       - If a name is found AND it exists in the list, inform the user and ask if they want to keep it, pick a different one, or create a new one
       - If creating a new identity, collect parameters (name, description, return URLs) with user confirmation before creating
       - Update `.greennode.json` with the `agent_identity` value
 
-   b. **External Auth**: **Invoke the `/agentbase-manage auth` skill using the Skill tool** to load the correct API endpoints and procedures. Then guide through storing API keys or configuring OAuth2 providers on the identity. Help set up each external service the user needs.
+   b. **External Auth**: **Invoke the `/agentbase-identity` skill using the Skill tool** to load the correct API endpoints and procedures. Then guide through storing API keys or configuring OAuth2 providers on the identity. Help set up each external service the user needs.
 
 3. **If no**: skip — the runtime will auto-provision an identity during deployment.
 4. Update state: `wizard_step: 4`, `agent_identity` (if created)
@@ -137,7 +137,7 @@ All project files are created flat in the CWD. The user should already be in the
 
 1. Ask the user: "What should your agent do? Describe its purpose and I can help you customize `main.py`. Or if you prefer to code it yourself later, we can skip this step."
 2. If the user describes what the agent should do:
-   - **External service check**: If the description mentions calling external APIs or services (e.g., OpenAI, Google, Slack, Stripe, databases, etc.) and Step 4 was skipped, recommend setting up `/agentbase-manage auth` to manage credentials securely instead of hardcoding in `.env`. Offer to go back to Step 4 or continue with local-only `.env` approach.
+   - **External service check**: If the description mentions calling external APIs or services (e.g., OpenAI, Google, Slack, Stripe, databases, etc.) and Step 4 was skipped, recommend setting up `/agentbase-identity` to manage credentials securely instead of hardcoding in `.env`. Offer to go back to Step 4 or continue with local-only `.env` approach.
    - Help edit `main.py` with custom logic based on their description
    - For **Basic/Custom** projects, help implement the handler logic, add HTTP client calls, data processing, or any custom integration. The only requirement is keeping `GreenNodeAgentBaseApp` as the HTTP server with `GET /health` returning 200
    - For **LangChain/LangGraph** projects, help set up tools, prompts, or graph nodes as appropriate
@@ -180,10 +180,10 @@ All project files are created flat in the CWD. The user should already be in the
    - Ask the user which LLM provider they want to use:
 
      **Option 1 — GreenNode AI Platform** (strongly recommended — fully integrated with the platform):
-     - **Invoke the `/aip` skill using the Skill tool** to load correct API endpoints.
-     - Use `/aip api-keys list` to list existing keys, or `/aip api-keys create` to create a new one (auto-saves to `.env` as `LLM_API_KEY`).
+     - **Invoke the `/agentbase-llm` skill using the Skill tool** to load correct API endpoints.
+     - Use `/agentbase-llm api-keys list` to list existing keys, or `/agentbase-llm api-keys create` to create a new one (auto-saves to `.env` as `LLM_API_KEY`).
      - Save base URL: `bash .claude/skills/agentbase/scripts/save_env_var.sh --key LLM_BASE_URL --value "https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1"`
-     - Use `/aip models list` to browse models. **Verify the chosen model has `modelStatus = ENABLED`.**
+     - Use `/agentbase-llm models list` to browse models. **Verify the chosen model has `modelStatus = ENABLED`.**
 
      **Option 2 — OpenAI**:
      - Instruct user to write key to temp file: `echo 'YOUR_KEY' > /tmp/llm-key.txt`
@@ -280,8 +280,8 @@ Follow the **Standalone: Testing & Validation (test)** procedures below to run t
 4. Suggest next steps:
    - Use `/agentbase-monitor` to view logs, metrics, and a full dashboard of your deployed resources
    - Use `/agentbase-deploy runtime` to manage scaling, versions, and endpoints
-   - Use `/agentbase-manage memory` to add or manage conversation memory
-   - Use `/agentbase-manage auth` to add more external service integrations
+   - Use `/agentbase-memory` to add or manage conversation memory
+   - Use `/agentbase-identity` to add more external service integrations
    - Re-deploy updates with `/agentbase-deploy`
 
 5. Update state: `wizard_step: 9`

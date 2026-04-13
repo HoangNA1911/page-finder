@@ -164,7 +164,7 @@ GREENNODE_CLIENT_ID=
 GREENNODE_CLIENT_SECRET=
 GREENNODE_AGENT_IDENTITY=
 # LLM provider config (any OpenAI-compatible provider)
-# For GreenNode AIP: use /aip to get API key and set LLM_BASE_URL=https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1
+# For GreenNode AIP: use /agentbase-llm to get API key and set LLM_BASE_URL=https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1
 # For OpenAI: set LLM_BASE_URL=https://api.openai.com/v1
 # For Ollama: set LLM_BASE_URL=http://localhost:11434/v1 (no key needed)
 LLM_API_KEY=
@@ -238,13 +238,13 @@ The `main.py` from Step 3 is used as the starting point. Help the user:
 
 If the user chose **LangChain**, replace `main.py` with the template in `assets/langchain_main.py`. Read the file and use its contents as the `main.py` for the project.
 
-If the user chose **LangChain + Memory**, replace `main.py` with the template in `assets/langchain_memory_main.py`. Read the file and use its contents as the `main.py` for the project. This template includes `AgentBaseMemoryEvents` (CheckpointSaver for short-term conversation persistence) and tool-based long-term memory via `MemoryClient` SDK (`remember`/`recall` tools). The user will need to create a memory via `/agentbase-manage memory create` and set the `MEMORY_ID` environment variable. The `MEMORY_STRATEGY_ID` env var defaults to `default` — it maps to the long-term memory strategy configured when creating the memory store.
+If the user chose **LangChain + Memory**, replace `main.py` with the template in `assets/langchain_memory_main.py`. Read the file and use its contents as the `main.py` for the project. This template includes `AgentBaseMemoryEvents` (CheckpointSaver for short-term conversation persistence) and tool-based long-term memory via `MemoryClient` SDK (`remember`/`recall` tools). The user will need to create a memory via `/agentbase-memory` and set the `MEMORY_ID` environment variable. The `MEMORY_STRATEGY_ID` env var defaults to `default` — it maps to the long-term memory strategy configured when creating the memory store.
 
 #### 4d. LangGraph (replace main.py with LangGraph template)
 
 If the user chose **LangGraph**, replace `main.py` with the template in `assets/langgraph_main.py`. Read the file and use its contents as the `main.py` for the project.
 
-If the user chose **LangGraph + Memory**, replace `main.py` with the template in `assets/langgraph_memory_main.py`. Read the file and use its contents as the `main.py` for the project. This template includes `AgentBaseMemoryEvents` (CheckpointSaver for short-term conversation persistence) and tool-based long-term memory via `MemoryClient` SDK (`remember`/`recall` tools). The user will need to create a memory via `/agentbase-manage memory create` and set the `MEMORY_ID` environment variable. The `MEMORY_STRATEGY_ID` env var defaults to `default` — it maps to the long-term memory strategy configured when creating the memory store.
+If the user chose **LangGraph + Memory**, replace `main.py` with the template in `assets/langgraph_memory_main.py`. Read the file and use its contents as the `main.py` for the project. This template includes `AgentBaseMemoryEvents` (CheckpointSaver for short-term conversation persistence) and tool-based long-term memory via `MemoryClient` SDK (`remember`/`recall` tools). The user will need to create a memory via `/agentbase-memory` and set the `MEMORY_ID` environment variable. The `MEMORY_STRATEGY_ID` env var defaults to `default` — it maps to the long-term memory strategy configured when creating the memory store.
 
 ### Init Step 5: Set Up Virtual Environment
 
@@ -337,11 +337,11 @@ LLM_MODEL=your-model-name
 ```
 
 **Provider examples:**
-- **GreenNode AIP**: Use `/aip` to get an API key. Set `LLM_BASE_URL=https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1`
+- **GreenNode AIP**: Use `/agentbase-llm` to get an API key. Set `LLM_BASE_URL=https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1`
 - **OpenAI**: Set `LLM_BASE_URL=https://api.openai.com/v1`, model e.g. `gpt-4o`
 - **Ollama** (local): Set `LLM_BASE_URL=http://localhost:11434/v1` (no key needed)
 
-**Production**: Use `/agentbase-manage auth` to store your API key on the platform and inject it at runtime.
+**Production**: Use `/agentbase-identity` to store your API key on the platform and inject it at runtime.
 
 ## Run Locally
 
@@ -382,7 +382,7 @@ See the [AgentBase Console](https://aiplatform.console.vngcloud.vn) to manage ru
 
 ## Add Conversation Memory (Optional)
 
-When you need conversation history or long-term memory, use `/agentbase-manage memory` to set up AgentBase Memory and integrate it with your agent.
+When you need conversation history or long-term memory, use `/agentbase-memory` to set up AgentBase Memory and integrate it with your agent.
 
 ## Project Structure
 
@@ -402,9 +402,9 @@ After creating all files, display a summary:
    - Virtual environment was created and dependencies were installed in Init Step 5
    - Reactivate venv when needed: `source venv/bin/activate` (macOS/Linux) or `venv\Scripts\Activate.ps1` (Windows PowerShell)
    - Configure credentials in `.greennode.json` or `.env`
-   - For LangChain/LangGraph: set up LLM access with `/aip` (list existing API keys or create one, browse models)
+   - For LangChain/LangGraph: set up LLM access with `/agentbase-llm` (list existing API keys or create one, browse models)
    - `python3 main.py`
 3. Mention that `/agentbase-deploy` can be used later to deploy to AgentBase Runtime
-4. Mention that `/agentbase-manage memory` can be used later to add conversation memory when needed
-5. Mention that `/agentbase-manage identity create` can be used to register an agent identity on the platform
-6. Mention that `/agentbase-manage auth` can be used to store API keys securely on the platform for runtime injection
+4. Mention that `/agentbase-memory` can be used later to add conversation memory when needed
+5. Mention that `/agentbase-identity` can be used to register an agent identity on the platform
+6. Mention that `/agentbase-identity` can be used to store API keys securely on the platform for runtime injection

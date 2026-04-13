@@ -330,7 +330,7 @@ Detected integrations:
 Readiness:
   [PASS] Memory service: accessible, 2 memory stores found
   [FAIL] Identity: no agent identities registered
-         -> Run /agentbase-manage identity to register your agent
+         -> Run /agentbase-identity to register your agent
   [SKIP] Auth providers: not used by this agent
   [PASS] AIP: API key found, 3 models enabled
 

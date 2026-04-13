@@ -20,16 +20,16 @@ app = GreenNodeAgentBaseApp()
 # --- LLM Configuration ---
 # Uses any OpenAI-compatible LLM provider (GreenNode AIP, OpenAI, Ollama, etc.)
 # Set LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL in your .env file.
-# For GreenNode AIP: use /aip to manage API keys and browse models.
+# For GreenNode AIP: use /agentbase-llm to manage API keys and browse models.
 # For other providers: set the appropriate base URL and API key.
-# Production: use /agentbase-manage auth to store API key, inject via @requires_api_key
+# Production: use /agentbase-identity to store API key, inject via @requires_api_key
 LLM_MODEL = os.environ.get("LLM_MODEL", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 if not LLM_MODEL or not LLM_BASE_URL or not LLM_API_KEY:
     raise ValueError(
         "LLM_MODEL, LLM_BASE_URL, and LLM_API_KEY environment variables are required. "
-        "Set them in your .env file or use /aip to get a platform API key."
+        "Set them in your .env file or use /agentbase-llm to get a platform API key."
     )
 
 llm = ChatOpenAI(
