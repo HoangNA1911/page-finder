@@ -23,7 +23,13 @@ AgentBase is a dedicated infrastructure platform for enterprise AI agents by Gre
 ### 2. Runtime Service
 - **Base URL**: `https://agentbase.api.vngcloud.vn/runtime`
 - **Console**: https://aiplatform.console.vngcloud.vn/runtime
-- Containerized agent deployment with autoscaling, versioning, zero-downtime deploys
+- Hosts two resource types:
+  - **Custom Agent** (`/agent-runtimes`) — user-built Docker images. Supports autoscaling, named endpoints (canary + DEFAULT), versioning, zero-downtime deploys, and optional VPC network mode (`networkConfig` with `mode`, `vpcId`, `subnetId`, `routeCidrs`). Default trigger for wizard-built agents.
+  - **OpenClaw** (`/openclaws`) — pre-built template agents (Telegram / Zalo chat bots) parameterized by version, flavor, model provider, and channel tokens. No Docker image required.
+
+  See `/agentbase-deploy` for both flows.
+
+  **VPC mode discovery** — Custom Agent VPC mode requires `vpcId` and `subnetId` from VNG Cloud's vServer service (`https://hcm-3.api.vngcloud.vn/vserver/vserver-gateway`, or `han-1.*` for HAN). Use `bash .claude/skills/agentbase/scripts/vserver.sh projects | vpcs | subnets | validate-vpc` to look them up and check vDNS + CIDR-overlap pre-flight before calling `runtime.sh create`. The default forbidden system CIDR is `172.30.0.0/16` (`AGENTBASE_SYSTEM_CIDR`).
 
 ### 3. Memory Service
 - **Base URL**: `https://agentbase.api.vngcloud.vn/memory`
@@ -222,7 +228,7 @@ Inform the user that they need to create an IAM Service Account manually, and di
 - `/agentbase-wizard` - Guided full lifecycle wizard (start here if new). Also handles project scaffolding (`/agentbase-wizard init`) and testing (`/agentbase-wizard test`)
 - `/agentbase-identity` - Manage agent identities and outbound authentication (API keys, OAuth2)
 - `/agentbase-memory` - Add memory to agents — conversation history and long-term fact extraction
-- `/agentbase-deploy` - Full deploy workflow, runtime management, and container registry (vCR)
+- `/agentbase-deploy` - Full deploy workflow, runtime management, and managed Container Registry (CR)
 - `/agentbase-monitor` - View logs, metrics, status dashboard, and debug running agents
 - `/agentbase-teardown` - Clean up and remove all resources for a project
 - `/agentbase-llm` - Manage GreenNode AI Platform resources (API keys, models)

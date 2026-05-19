@@ -62,6 +62,55 @@ build_log_body() {
      (if $order != "" then {order: $order} else {} end)'
 }
 
+# Merge a networkConfig object into the request body.
+# Args: BODY_JSON MODE VPC_ID SUBNET_ID ROUTE_CIDRS_CSV
+# - MODE empty: leave body unchanged (server defaults to PUBLIC).
+# - MODE=PUBLIC: emit {mode: "PUBLIC"} (vpc/subnet/routes ignored).
+# - MODE=VPC: vpcId AND subnetId required; routeCidrs is a comma-separated list
+#   of private CIDRs (RFC 1918), optional.
+build_network_config() {
+  local body="$1" mode="$2" vpc_id="$3" subnet_id="$4" route_cidrs_csv="$5"
+
+  if [ -z "$mode" ]; then
+    echo "$body"
+    return 0
+  fi
+
+  # Normalize and validate mode
+  local mode_upper
+  mode_upper=$(echo "$mode" | tr '[:lower:]' '[:upper:]')
+  if [ "$mode_upper" != "PUBLIC" ] && [ "$mode_upper" != "VPC" ]; then
+    echo "ERROR: --network-mode must be PUBLIC or VPC (got: $mode)" >&2
+    return 1
+  fi
+
+  if [ "$mode_upper" = "VPC" ]; then
+    if [ -z "$vpc_id" ] || [ -z "$subnet_id" ]; then
+      echo "ERROR: --vpc-id and --subnet-id are required when --network-mode=VPC" >&2
+      return 1
+    fi
+  fi
+
+  # Build routeCidrs as a JSON array (split CSV; trim whitespace per item)
+  local route_cidrs_json="[]"
+  if [ -n "$route_cidrs_csv" ]; then
+    route_cidrs_json=$(echo "$route_cidrs_csv" | jq -Rn \
+      '[inputs | split(",")[] | gsub("^\\s+|\\s+$"; "") | select(length > 0)]')
+  fi
+
+  local network_json
+  network_json=$(jq -n \
+    --arg mode "$mode_upper" \
+    --arg vpcId "$vpc_id" \
+    --arg subnetId "$subnet_id" \
+    --argjson routeCidrs "$route_cidrs_json" \
+    '{mode: $mode, routeCidrs: $routeCidrs} +
+     (if $vpcId != "" then {vpcId: $vpcId} else {} end) +
+     (if $subnetId != "" then {subnetId: $subnetId} else {} end)')
+
+  echo "$body" | jq --argjson nc "$network_json" '. + {networkConfig: $nc}'
+}
+
 # --- Actions ---
 
 do_list() {
@@ -84,7 +133,8 @@ do_list() {
 do_create() {
   local name="" description="" image_url="" flavor_id="" env_file=""
   local min_replicas="" max_replicas="" cpu_scale="" mem_scale=""
-  local registry_credentials=""
+  local registry_credentials="" from_cr=false
+  local network_mode="" vpc_id="" subnet_id="" route_cidrs=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -98,6 +148,11 @@ do_create() {
       --cpu-scale) cpu_scale="$2"; shift 2 ;;
       --mem-scale) mem_scale="$2"; shift 2 ;;
       --registry-credentials-file) registry_credentials="$2"; shift 2 ;;
+      --from-cr) from_cr=true; shift ;;
+      --network-mode) network_mode="$2"; shift 2 ;;
+      --vpc-id) vpc_id="$2"; shift 2 ;;
+      --subnet-id) subnet_id="$2"; shift 2 ;;
+      --route-cidrs) route_cidrs="$2"; shift 2 ;;
       *) echo "ERROR: Unknown option for create: $1" >&2; return 1 ;;
     esac
   done
@@ -148,23 +203,42 @@ do_create() {
       autoscaling: $autoscaling}')
 
   # Handle private registry imageAuth
-  if [ -n "$registry_credentials" ]; then
+  local reg_user="" reg_pass=""
+  if [ "$from_cr" = true ]; then
+    if [ -n "$registry_credentials" ]; then
+      echo "ERROR: Pass either --from-cr or --registry-credentials-file, not both" >&2
+      return 1
+    fi
+    local cred_json
+    cred_json=$(NO_PERSIST=1 REDACT_FIELDS="" api_call GET "${AGENTBASE_CR_URL}/registry-credential" 3>&1 >/dev/null) || return 1
+    reg_user=$(echo "$cred_json" | jq -r '.username // empty')
+    reg_pass=$(echo "$cred_json" | jq -r '.secret // empty')
+    if [ -z "$reg_user" ] || [ -z "$reg_pass" ]; then
+      echo "ERROR: Could not read username/secret from CR credentials response" >&2
+      return 1
+    fi
+  elif [ -n "$registry_credentials" ]; then
     if [ ! -f "$registry_credentials" ]; then
       echo "ERROR: Registry credentials file not found: $registry_credentials" >&2
       return 1
     fi
-    local reg_user reg_pass
     reg_user=$(jq -r '.username // empty' "$registry_credentials" 2>/dev/null)
     reg_pass=$(jq -r '.password // empty' "$registry_credentials" 2>/dev/null)
     if [ -z "$reg_user" ] || [ -z "$reg_pass" ]; then
       echo "ERROR: Registry credentials file must contain 'username' and 'password' fields" >&2
       return 1
     fi
+  fi
+
+  if [ -n "$reg_user" ]; then
     body=$(echo "$body" | jq \
       --arg user "$reg_user" \
       --arg pass "$reg_pass" \
       '. + {imageAuth: {enabled: true, username: $user, password: $pass}}')
   fi
+
+  # Handle optional networkConfig (PUBLIC by default; only emit when explicitly requested)
+  body=$(build_network_config "$body" "$network_mode" "$vpc_id" "$subnet_id" "$route_cidrs") || return 1
 
   REDACT_FIELDS="password" api_call POST "$BASE_URL" "$body"
 }
@@ -185,7 +259,8 @@ do_update() {
 
   local description="" image_url="" flavor_id="" env_file=""
   local min_replicas="" max_replicas="" cpu_scale="" mem_scale=""
-  local registry_credentials=""
+  local registry_credentials="" from_cr=false
+  local network_mode="" vpc_id="" subnet_id="" route_cidrs=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -198,6 +273,11 @@ do_update() {
       --cpu-scale) cpu_scale="$2"; shift 2 ;;
       --mem-scale) mem_scale="$2"; shift 2 ;;
       --registry-credentials-file) registry_credentials="$2"; shift 2 ;;
+      --from-cr) from_cr=true; shift ;;
+      --network-mode) network_mode="$2"; shift 2 ;;
+      --vpc-id) vpc_id="$2"; shift 2 ;;
+      --subnet-id) subnet_id="$2"; shift 2 ;;
+      --route-cidrs) route_cidrs="$2"; shift 2 ;;
       *) echo "ERROR: Unknown option for update: $1" >&2; return 1 ;;
     esac
   done
@@ -241,23 +321,42 @@ do_update() {
       autoscaling: $autoscaling}')
 
   # Handle private registry imageAuth
-  if [ -n "$registry_credentials" ]; then
+  local reg_user="" reg_pass=""
+  if [ "$from_cr" = true ]; then
+    if [ -n "$registry_credentials" ]; then
+      echo "ERROR: Pass either --from-cr or --registry-credentials-file, not both" >&2
+      return 1
+    fi
+    local cred_json
+    cred_json=$(NO_PERSIST=1 REDACT_FIELDS="" api_call GET "${AGENTBASE_CR_URL}/registry-credential" 3>&1 >/dev/null) || return 1
+    reg_user=$(echo "$cred_json" | jq -r '.username // empty')
+    reg_pass=$(echo "$cred_json" | jq -r '.secret // empty')
+    if [ -z "$reg_user" ] || [ -z "$reg_pass" ]; then
+      echo "ERROR: Could not read username/secret from CR credentials response" >&2
+      return 1
+    fi
+  elif [ -n "$registry_credentials" ]; then
     if [ ! -f "$registry_credentials" ]; then
       echo "ERROR: Registry credentials file not found: $registry_credentials" >&2
       return 1
     fi
-    local reg_user reg_pass
     reg_user=$(jq -r '.username // empty' "$registry_credentials" 2>/dev/null)
     reg_pass=$(jq -r '.password // empty' "$registry_credentials" 2>/dev/null)
     if [ -z "$reg_user" ] || [ -z "$reg_pass" ]; then
       echo "ERROR: Registry credentials file must contain 'username' and 'password' fields" >&2
       return 1
     fi
+  fi
+
+  if [ -n "$reg_user" ]; then
     body=$(echo "$body" | jq \
       --arg user "$reg_user" \
       --arg pass "$reg_pass" \
       '. + {imageAuth: {enabled: true, username: $user, password: $pass}}')
   fi
+
+  # Handle optional networkConfig (PUBLIC by default; only emit when explicitly requested)
+  body=$(build_network_config "$body" "$network_mode" "$vpc_id" "$subnet_id" "$route_cidrs") || return 1
 
   REDACT_FIELDS="password" api_call PATCH "${BASE_URL}/${id}" "$body"
 }
@@ -455,13 +554,24 @@ do_help() {
     "  list   [--page N] [--size N]                          List runtimes
   create --name NAME --image URL --flavor ID [--description DESC]
          [--env-file PATH] [--min-replicas N] [--max-replicas N]
-         [--cpu-scale N] [--mem-scale N] [--registry-credentials-file PATH]
-                                                           Create a new runtime
+         [--cpu-scale N] [--mem-scale N]
+         [--from-cr | --registry-credentials-file PATH]
+         [--network-mode PUBLIC|VPC] [--vpc-id ID] [--subnet-id ID]
+         [--route-cidrs CIDR1,CIDR2,...]
+                                                           Create a new Custom Agent runtime
+                                                           (--from-cr pulls AgentBase CR credentials inline; no file needed)
+                                                           (--network-mode VPC requires --vpc-id and --subnet-id;
+                                                            flavor must support agent-runtime-vpc resource type)
   get    ID                                                Get runtime by ID
   update ID --image URL --flavor ID [--description DESC]
          [--env-file PATH] [--min-replicas N] [--max-replicas N]
-         [--cpu-scale N] [--mem-scale N] [--registry-credentials-file PATH]
-                                                           Update a runtime
+         [--cpu-scale N] [--mem-scale N]
+         [--from-cr | --registry-credentials-file PATH]
+         [--network-mode PUBLIC|VPC] [--vpc-id ID] [--subnet-id ID]
+         [--route-cidrs CIDR1,CIDR2,...]
+                                                           Update a Custom Agent runtime
+                                                           (--from-cr pulls AgentBase CR credentials inline; no file needed)
+                                                           (changing network-mode triggers endpoint recreation)
   delete ID                                                Delete a runtime
   reset-service-account ID                                 Reset service account
   logs   ID [--from N] [--limit N] [--query TEXT]

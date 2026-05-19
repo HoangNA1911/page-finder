@@ -63,7 +63,7 @@ Teardown Plan for "my-agent":
   3. Delete auth provider "openai-key" (API Key)
   4. Delete agent identity "my-agent"
   5. Delete memory "my-agent-memory"
-  6. Delete vCR repo "my-agent-repo"
+  6. Delete CR images for this project (3 images, all artifacts)
   7. Delete AIP API key "my-agent-key" (shared resource)
 
 All deletions are IRREVERSIBLE.
@@ -123,27 +123,24 @@ bash .claude/skills/agentbase/scripts/identity.sh delete $NAME
 bash .claude/skills/agentbase/scripts/memory.sh delete $MEMORY_ID
 ```
 
-**Phase 6 — vCR repositories:**
-> **Important**: You MUST delete all images in a repo before deleting the repo itself — the vCR API rejects repo deletion if any images remain.
+**Phase 6 — Container Registry images:**
+> **Important**: Each user has **one pre-provisioned repository** that cannot be deleted. Teardown only removes images (and their artifacts) belonging to the project. List images first, filter by project name, then delete each one.
 
 ```bash
-# Step 1: List all images in the repo (paginate if totalPage > 1)
+# Step 1: List images, filter by project name substring (paginate if totalPage > 1)
 PAGE=1
 while true; do
-  RESULT=$(bash .claude/skills/agentbase/scripts/vcr.sh image list $REPO_ID --page $PAGE --size 100)
-  # Delete each image on this page
-  # bash .claude/skills/agentbase/scripts/vcr.sh image delete $REPO_ID --name $IMAGE_NAME
+  RESULT=$(bash .claude/skills/agentbase/scripts/cr.sh images list --name $PROJECT_NAME --page $PAGE --size 100)
+  # For each image in $RESULT.data[].name:
+  #   bash .claude/skills/agentbase/scripts/cr.sh images delete --name $IMAGE_NAME
+  # (image delete cascades to all artifacts/tags under that image.)
   TOTAL_PAGE=$(echo "$RESULT" | jq '.totalPage // 1')
   [ "$PAGE" -ge "$TOTAL_PAGE" ] && break
   PAGE=$((PAGE + 1))
 done
 
-# Step 2: Verify all images are deleted before deleting the repo
-bash .claude/skills/agentbase/scripts/vcr.sh image list $REPO_ID
-# Only proceed if no images remain
-
-# Step 3: Delete the repo
-bash .claude/skills/agentbase/scripts/vcr.sh repo delete $REPO_ID
+# Step 2: Verify project images are gone
+bash .claude/skills/agentbase/scripts/cr.sh images list --name $PROJECT_NAME
 ```
 
 **Phase 7 — AIP API keys** (optional, may be shared):
@@ -163,7 +160,7 @@ Teardown Results for "my-agent":
   Deleted auth provider "openai-key"
   Deleted agent identity "my-agent"
   Deleted memory "my-agent-memory"
-  Skipped vCR repo "my-agent-repo" (user chose to keep)
+  Skipped CR images for "my-agent" (user chose to keep)
   Failed to delete AIP key "my-agent-key" (403 Forbidden)
 
 Teardown finished. 5 of 7 resources removed. 2 failed — see errors above.
@@ -171,7 +168,7 @@ Teardown finished. 5 of 7 resources removed. 2 failed — see errors above.
 
 ### Step 7: Clean Up Local State
 
-If `.agentbase-state.json` exists in the current directory, **reset the `wizard_step` to 0** and clear resource IDs that were deleted (e.g., `runtime_id`, `memory_id`, `agent_identity`, `aip_key_name`, `vcr_repo_name`). This prevents `/agentbase-wizard resume` from trying to resume with stale references to deleted resources. Only clear fields for resources that were actually deleted — keep fields for resources the user chose to skip/keep.
+If `.agentbase-state.json` exists in the current directory, **reset the `wizard_step` to 0** and clear resource IDs that were deleted (e.g., `runtime_id`, `memory_id`, `agent_identity`, `aip_key_name`, `cr_repo_name`). This prevents `/agentbase-wizard resume` from trying to resume with stale references to deleted resources. Only clear fields for resources that were actually deleted — keep fields for resources the user chose to skip/keep.
 
 If `.agentbase/` directory exists, offer to remove it:
 ```
@@ -189,7 +186,7 @@ If file operations fail (e.g., permission denied), report the specific error and
 | Error | Cause | Fix |
 |-------|-------|-----|
 | Runtime deletion fails (400) | Custom endpoints still exist | Delete all non-DEFAULT endpoints first, then retry runtime deletion (see Phase 1 → Phase 2 order) |
-| Repo deletion fails (400) | Repository still contains images | Delete all images in the repo first (`vcr.sh image delete`), then retry repo deletion |
+| CR image delete fails (404) | Wrong `--name` (case-sensitive) or image already gone | List first with `cr.sh images list --name $PROJECT_NAME` to confirm exact names |
 | 401 Unauthorized mid-teardown | IAM token expired during long teardown | Re-authenticate (`get_token.sh --force`) and retry the failed deletion |
 | Resource belongs to another project | Name-based matching too broad (e.g., project "test" matches "api-test") | Always verify resource IDs in the deletion plan. Deselect items that don't belong to the target project |
 | Identity deletion fails (404/500) | Identity name incorrect or already deleted | Verify identity name with `identity.sh list` before retrying |

@@ -145,6 +145,29 @@ api_call() {
     return 1
   fi
 
+  # In-memory-only mode (NO_PERSIST=1): write body to fd 3 (NOT stdout) and skip
+  # all disk writes. Callers fetching short-lived secrets (e.g. registry credentials)
+  # use this so plaintext never lands in .agentbase/last_response.json, on the TTY,
+  # or — critically — in an LLM-visible tool-output stream.
+  #
+  # The caller MUST explicitly open fd 3 for writing, typically via the
+  # "swap-fd" trick inside a command substitution:
+  #
+  #     secret_json=$(NO_PERSIST=1 api_call GET "$url" 3>&1 >/dev/null)
+  #
+  # If fd 3 is not open, we refuse rather than silently fall back to stdout —
+  # otherwise a caller that forgot the `3>&1 >/dev/null` plumbing would leak
+  # the secret to the parent's stdout (and hence into the LLM's context).
+  if [ "${NO_PERSIST:-0}" = "1" ]; then
+    if ! { : >&3; } 2>/dev/null; then
+      echo "ERROR: NO_PERSIST=1 requires the caller to open fd 3 for writing." >&2
+      echo "       Use the pattern:  \$(NO_PERSIST=1 api_call ... 3>&1 >/dev/null)" >&2
+      return 1
+    fi
+    printf '%s\n' "$response_body" >&3
+    return 0
+  fi
+
   # Determine save path
   mkdir -p "$AGENTBASE_DIR"
   local save_path="${SAVE_AS:-$AGENTBASE_DIR/last_response.json}"

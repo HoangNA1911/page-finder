@@ -7,6 +7,8 @@ description: "MANDATORY skill for ANY request to build, create, plan, or develop
 
 A guided 9-step wizard that takes a new user from zero to a deployed AI agent on GreenNode AgentBase. Each step orchestrates existing skills and checks if work is already done (idempotent). Also supports standalone project scaffolding (`init`) and local testing/validation (`test`) as direct subcommands.
 
+> **Scope**: This wizard targets the **Custom Agent** path — the user writes Python code that gets packaged into a Docker image and deployed to `/agent-runtimes`. For the **OpenClaw** path (pre-built Telegram / Zalo chat bot templates with no Docker image), skip this wizard and invoke `/agentbase-deploy` (Part 3 — OpenClaw) directly. If the user is unsure which path fits, briefly explain both and ask before starting.
+
 ## Argument Routing
 
 Check `$ARGUMENTS` to determine which mode to run:
@@ -28,7 +30,7 @@ Check `$ARGUMENTS` to determine which mode to run:
 - **Check before acting** -- each step checks if already completed before doing work
 - **Allow skipping** optional steps (Steps 4 and 5)
 - **Store state** in `.agentbase-state.json` so the wizard can resume if interrupted
-- **Don't duplicate skill logic — INVOKE skills using the Skill tool** before performing any API calls that belong to another skill. Each skill (`/agentbase-llm`, `/agentbase-identity`, `/agentbase-identity`, `/agentbase-memory`, `/agentbase-deploy`, `/agentbase-deploy vcr`, `/agentbase-monitor`) contains the authoritative API endpoints and procedures. Do NOT construct API URLs from memory — always invoke the relevant skill first so its instructions (including correct domains and URLs) are loaded into context.
+- **Don't duplicate skill logic — INVOKE skills using the Skill tool** before performing any API calls that belong to another skill. Each skill (`/agentbase-llm`, `/agentbase-identity`, `/agentbase-identity`, `/agentbase-memory`, `/agentbase-deploy`, `/agentbase-deploy cr`, `/agentbase-monitor`) contains the authoritative API endpoints and procedures. Do NOT construct API URLs from memory — always invoke the relevant skill first so its instructions (including correct domains and URLs) are loaded into context.
 - **Never assume API response structure** — always inspect the actual response first before extracting or filtering data. Do not guess field names.
 - **Confirm before every significant action (HARD GATE)** -- present what you are about to do and wait for user approval. Only proceed when the user responds with an explicit confirmation keyword: `yes`, `confirm`, `ok`, `approve`, `proceed`, `go ahead`, `do it`, `ship it`, `lgtm`, or equivalent affirmative. If the user responds with ANYTHING ELSE (parameter changes, questions, corrections, additional info, or ambiguous text), treat it as adjustment input — update the summary and re-present for confirmation again. NEVER interpret a non-confirmation response as approval
 - **Present a clear summary** at each step transition showing what was completed and what comes next
@@ -52,7 +54,7 @@ Maintain `.agentbase-state.json` in the project directory. Update it after each 
   "runtime_id": null,
   "memory_id": null,
   "aip_key_name": null,
-  "vcr_repo_name": null
+  "cr_repo_name": null
 }
 ```
 
@@ -231,12 +233,12 @@ Follow the **Standalone: Testing & Validation (test)** procedures below to run t
 
 1. The `/agentbase-deploy` skill handles the full pipeline:
    - Building the Docker image
-   - Setting up vCR registry if needed (it will invoke `/agentbase-deploy vcr` as needed)
+   - Fetching managed Container Registry credentials if needed (it will invoke `/agentbase-deploy cr` as needed)
    - Pushing the image
    - Creating or updating the runtime
    - Waiting for ACTIVE status
-2. Store the runtime ID and vCR repo name from the deployment
-3. Update state: `wizard_step: 8`, `runtime_id`, `vcr_repo_name`
+2. Store the runtime ID and CR repo name from the deployment
+3. Update state: `wizard_step: 8`, `runtime_id`, `cr_repo_name`
 
 ---
 

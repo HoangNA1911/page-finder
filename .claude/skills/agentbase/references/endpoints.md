@@ -8,7 +8,7 @@ Centralized reference for all API base URLs used across AgentBase skills. Skills
 
 | Valid Domain | Service |
 |---|---|
-| `agentbase.api.vngcloud.vn` | AgentBase (Identity, Runtime, Memory) |
+| `agentbase.api.vngcloud.vn` | AgentBase (Identity, Runtime, Memory, Policy) |
 | `aiplatform-hcm.api.vngcloud.vn` | AI Platform management (API keys, models) |
 | `maas-llm-aiplatform-hcm.api.vngcloud.vn` | LLM inference endpoint (OpenAI-compatible) |
 | `vcr.api.vngcloud.vn` | Container Registry |
@@ -28,6 +28,7 @@ Before constructing any curl command, verify the domain matches one of the valid
 | Identity | `https://agentbase.api.vngcloud.vn/identity/api/v1` | 0-indexed (`page=0` is first) |
 | Runtime | `https://agentbase.api.vngcloud.vn/runtime` | 1-indexed (`page=1` is first) |
 | Memory | `https://agentbase.api.vngcloud.vn/memory` | 1-indexed (`page=1` is first) |
+| Policy | `https://agentbase.api.vngcloud.vn/policy/api/v1` | 1-indexed (`page=1` is first) |
 
 ## AI Platform (AIP)
 

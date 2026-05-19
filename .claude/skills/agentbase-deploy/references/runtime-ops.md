@@ -1,6 +1,6 @@
-# Runtime Management — Full Operations Reference
+# Custom Agent Runtime Management — Full Operations Reference
 
-Detailed operations for managing agent runtimes on GreenNode AgentBase Runtime Service.
+Detailed operations for managing **Custom Agents** (resource type `/agent-runtimes`) on GreenNode AgentBase Runtime Service. A Custom Agent is a user-built application whose code is packaged into a Docker image the user supplies. For **OpenClaw** (pre-built template agents like Telegram/Zalo bots, resource type `/openclaws`), see `references/openclaw-ops.md` and use `openclaw.sh`.
 
 All operations use the runtime script: `bash .claude/skills/agentbase/scripts/runtime.sh`
 
@@ -34,6 +34,7 @@ Present a summary with recommended values and ask the user to confirm or adjust:
 | **Command** | `[]` (use image default) | Override Docker ENTRYPOINT |
 | **Args** | `[]` (use image default) | Override Docker CMD |
 | **Description** | `""` | Optional description |
+| **Network mode** | `PUBLIC` (omit `networkConfig`) | `PUBLIC` (server default) or `VPC`. See "Network Configuration" below |
 
 **Step 3 - Environment variables file:**
 
@@ -66,6 +67,45 @@ Show the final configuration and ask the user to confirm before sending.
 
 > Without `imageAuth`, AgentBase cannot pull images from private registries — the runtime will fail with an image pull error.
 
+**Optional `networkConfig` object** (Custom Agent only; OpenClaw does not accept it):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `mode` | string | required if object present | `PUBLIC` (default when `networkConfig` is omitted) or `VPC` (case-insensitive on input, normalized to upper-case). |
+| `vpcId` | string | required when `mode=VPC` | VNG Cloud VPC ID. The VPC must have **DNS enabled**, otherwise create/update is rejected with HTTP 400. |
+| `subnetId` | string | required when `mode=VPC` | Subnet inside the chosen VPC. The API calls VServer to verify existence; 404 → HTTP 400. |
+| `routeCidrs` | string[] | optional | Extra **private** CIDR ranges (RFC 1918) routed from the runtime pod into the VPC. Each entry must be a valid private CIDR and must not overlap a platform-disallowed range. Public CIDRs are rejected. |
+
+Validation rules (enforced server-side; mirror these in the user-facing prompt before submitting):
+- `mode=PUBLIC` requires the chosen flavor to support resource type `agent-runtime`.
+- `mode=VPC` requires the chosen flavor to support resource type `agent-runtime-vpc` — list flavors with `runtime.sh flavors` and inspect `supportedResourceTypes` to filter.
+- The selected VPC's CIDR is also checked against the platform-disallowed (system) CIDR — if it overlaps, the user must pick a different VPC. Default system CIDR: `172.30.0.0/16` (overridable via `AGENTBASE_SYSTEM_CIDR`; will eventually be published on the platform docs).
+- Changing `networkConfig.mode` on an existing runtime via `update` causes endpoints to be recreated under the new mode.
+
+### Discovering `vpcId` and `subnetId` — vServer API
+
+Users rarely know their VPC/subnet UUIDs off the top of their heads. Use `vserver.sh` (wraps the vServer API at `https://hcm-3.api.vngcloud.vn/vserver/vserver-gateway`; switch region with `GREENNODE_REGION=han`) to list and validate them:
+
+```bash
+# 1. List projects (most users have a single project)
+bash .claude/skills/agentbase/scripts/vserver.sh projects
+
+# 2. List VPCs in the project — filtered to id, name, cidr, status, dnsStatus
+bash .claude/skills/agentbase/scripts/vserver.sh vpcs <projectId>
+
+# 3. List subnets of a VPC — filtered to id, name, cidr, status
+bash .claude/skills/agentbase/scripts/vserver.sh subnets <projectId> <vpcId>
+
+# 4. Validate the VPC is usable for Custom Agent VPC mode
+bash .claude/skills/agentbase/scripts/vserver.sh validate-vpc <projectId> <vpcId>
+```
+
+`validate-vpc` runs **both** pre-flight checks before you call `runtime.sh create`:
+1. vDNS is enabled on the VPC (otherwise the runtime API rejects with HTTP 400).
+2. The VPC CIDR does not overlap the system CIDR (`AGENTBASE_SYSTEM_CIDR`, default `172.30.0.0/16`).
+
+Exit status is `0` when both checks pass, `1` otherwise; the JSON report names which check failed.
+
 **Example (public registry)**:
 ```bash
 bash .claude/skills/agentbase/scripts/runtime.sh create \
@@ -96,6 +136,19 @@ bash .claude/skills/agentbase/scripts/runtime.sh create \
   --cpu-scale 60 \
   --mem-scale 60
 ```
+
+**Example (VPC network mode)**:
+```bash
+bash .claude/skills/agentbase/scripts/runtime.sh create \
+  --name my-agent \
+  --image "registry.example.com/my-agent:v1" \
+  --flavor 1x1-general-vpc \
+  --network-mode VPC \
+  --vpc-id "<vpc-uuid>" \
+  --subnet-id "<subnet-uuid>" \
+  --route-cidrs "10.10.0.0/16,192.168.50.0/24"
+```
+Omit `--network-mode` entirely to keep the default `PUBLIC` behaviour (the script then sends no `networkConfig` field, matching legacy runtimes).
 
 **Behavior**: Creating a runtime automatically creates a `DEFAULT` endpoint that tracks the latest version.
 
@@ -140,9 +193,11 @@ bash .claude/skills/agentbase/scripts/runtime.sh update $RUNTIME_ID \
   --flavor 1x1-general
 ```
 
-**Body fields** (same as create minus `name`): `description`, `imageUrl`, `imageAuth`, `command`, `args`, `environmentVariables`, `flavorId`, `autoscaling`. All fields except `imageAuth` are required.
+**Body fields** (same as create minus `name`): `description`, `imageUrl`, `imageAuth`, `command`, `args`, `environmentVariables`, `flavorId`, `autoscaling`, `networkConfig`. All fields except `imageAuth` and `networkConfig` are required.
 
 **Behavior**: Each update creates a new version. The `DEFAULT` endpoint automatically updates to the new version.
+
+> **Switching network mode**: If the new version's `networkConfig.mode` differs from the previous version's, the endpoint is recreated under the new mode (the public/VPC paths are mutually exclusive). Expect a brief endpoint downtime while the new pod comes up. If `--network-mode` is omitted, the server defaults to `PUBLIC` — passing nothing on an existing VPC runtime will move it back to PUBLIC. Always re-pass the previous network flags when you want to keep VPC mode.
 
 ---
 
@@ -211,7 +266,7 @@ bash .claude/skills/agentbase/scripts/runtime.sh endpoints metrics $RUNTIME_ID $
 bash .claude/skills/agentbase/scripts/runtime.sh versions $RUNTIME_ID --page 1 --size 20
 ```
 
-**Version fields**: `agentRuntimeId`, `version`, `description`, `imageUrl`, `imageAuth` (with `enabled`, `username`, `encryptedPassword`), `command`, `args`, `environmentVariables`, `flavorId`, `autoscaling` (with `minReplicas`, `maxReplicas`, `cpuUtilization`, `memoryUtilization`), `createdAt`.
+**Version fields**: `agentRuntimeId`, `version`, `description`, `imageUrl`, `imageAuth` (with `enabled`, `username`, `encryptedPassword`), `command`, `args`, `environmentVariables`, `flavorId`, `autoscaling` (with `minReplicas`, `maxReplicas`, `cpuUtilization`, `memoryUtilization`), `networkConfig` (with `mode`, `vpcId`, `subnetId`, `routeCidrs` — `null` for legacy versions created before the field existed), `createdAt`.
 
 Display as a table: Version, Image, Flavor, Created.
 
