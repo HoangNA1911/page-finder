@@ -1,233 +1,248 @@
-# GreenNode AgentBase Skills - User Guide
+# GreenNode AgentBase Skills
 
-Setup and usage guide for GreenNode AgentBase skills across **Claude Code**, **Cursor**, and **OpenAI Codex**.
+A bundle of [SKILL.md](https://www.mintlify.com/blog/skill-md)-compatible skills that drive the full **GreenNode AgentBase** lifecycle — scaffold → configure → code → test → deploy → monitor → teardown — from inside your AI coding tool.
 
----
-
-## Quick Start
-
-```bash
-# Copy skills into your project
-cp -r <skills-repo>/.claude/skills/ <your-project>/.claude/skills/
-
-# Launch Claude Code
-cd <your-project>
-claude
-
-# Then use slash commands or natural language
-/agentbase-wizard                    # Guided wizard from A to Z
-/agentbase-wizard init my-agent      # Scaffold a new project
-/agentbase-deploy                    # Deploy agent
-"Create a new agent with LangGraph"  # Claude picks the right skill
-```
+Drop them into **Claude Code**, **Cursor**, **OpenAI Codex**, or any other SKILL.md-aware client and you get slash commands like `/agentbase-wizard`, `/agentbase-deploy`, `/agentbase-monitor`. The skills are plain Markdown + shell — no client-specific runtime — so the **full lifecycle works in every tool that can read SKILL.md and run a shell**.
 
 ---
 
-## Setup by Tool
-
-All skills follow the [SKILL.md standard](https://www.mintlify.com/blog/skill-md). Copy them into the correct directory and they're auto-detected.
-
-### Claude Code
+## TL;DR — Install in 30 Seconds
 
 ```bash
-# Project-level
-cp -r <skills-repo>/.claude/skills/ <your-project>/.claude/skills/
+git clone https://github.com/vngcloud/greennode-agentbase-skills.git
 
-# Or global (all projects)
-cp -r <skills-repo>/.claude/skills/* ~/.claude/skills/
+# Pick the install target for your tool (see table below)
+#   Claude Code  → ~/.claude/skills        or  <project>/.claude/skills
+#   Cursor       → ~/.cursor/skills        or  <project>/.cursor/skills
+#   Codex        → ~/.agents/skills        or  <project>/.agents/skills
+
+mkdir -p ~/.claude/skills
+cp -r greennode-agentbase-skills/.claude/skills/* ~/.claude/skills/
 ```
+
+Then restart your tool and type `/agentbase-wizard` (or just say *"build me a Telegram bot"*).
+
+---
+
+## Install Per Tool
+
+All skills live under `.claude/skills/`. They are plain folders with a `SKILL.md` file inside — no build step. Each client auto-discovers them from a known directory.
+
+### 1. Claude Code
+
+The native home for these skills.
+
+```bash
+# Global (recommended — available in every project)
+mkdir -p ~/.claude/skills
+cp -r greennode-agentbase-skills/.claude/skills/* ~/.claude/skills/
+
+# OR project-scoped
+mkdir -p <your-project>/.claude/skills
+cp -r greennode-agentbase-skills/.claude/skills/* <your-project>/.claude/skills/
+```
+
+Launch and use:
 
 ```bash
 cd <your-project> && claude
+> /agentbase-wizard          # slash command
+> "deploy my agent"           # or just describe intent — Claude picks the skill
 ```
 
-Use `/skill-name` or natural language — Claude auto-picks the right skill.
+> **Tip:** `claude` will auto-load every `SKILL.md` it finds. To verify, run `/help` and look for the skills section.
 
-### Cursor (v2.4+)
+### 2. Cursor
+
+Cursor's skills support and exact path have evolved across releases — **check your version's docs** for the correct skills directory before installing. Typical layout:
 
 ```bash
-# Project-level
-cp -r <skills-repo>/.claude/skills/ <your-project>/.cursor/skills/
-
-# Or global
-cp -r <skills-repo>/.claude/skills/* ~/.cursor/skills/
+mkdir -p ~/.cursor/skills
+cp -r greennode-agentbase-skills/.claude/skills/* ~/.cursor/skills/
+# or project-scoped: <your-project>/.cursor/skills/
 ```
 
-```bash
-cd <your-project> && cursor .
-```
+Open Cursor → Agent chat → type `/` to search skills. Agent mode runs bash / curl, so deploy / monitor / teardown work end-to-end.
 
-Type `/` in Agent chat to search skills. For deploy & monitor, open terminal and run `claude`.
-
-### OpenAI Codex
+### 3. OpenAI Codex
 
 ```bash
-# Project-level
-cp -r <skills-repo>/.claude/skills/ <your-project>/.agents/skills/
-
-# Or global
-cp -r <skills-repo>/.claude/skills/* ~/.agents/skills/
-```
-
-```bash
-export OPENAI_API_KEY="your-key"
+export OPENAI_API_KEY="..."
 cd <your-project> && codex
 ```
 
-Use `$skill-name` or natural language. For deploy & monitor, switch to Claude Code.
+Codex CLI reads SKILL.md-style files; **the exact discovery path depends on your Codex version** (commonly `~/.agents/skills/` or `<project>/.agents/skills/` — check your version's docs). Once discovered, the CLI executes shell + HTTP calls, so the full lifecycle works.
 
-### Tool Comparison
+### 4. Other SKILL.md-compatible Clients
 
-| Feature | Claude Code | Cursor (v2.4+) | Codex |
-|---------|:-----------:|:---------------:|:-----:|
-| Skills directory | `.claude/skills/` | `.cursor/skills/` | `.agents/skills/` |
-| Slash commands | `/skill-name` | `/skill-name` | `$skill-name` |
-| Auto API calls | Yes | No | Limited |
-| Full deploy pipeline | Yes | No | No |
-| Monitoring/Logs | Yes | No | No |
-| **Best for** | **Full lifecycle** | **Writing code** | **Writing code** |
+Any client that (a) reads SKILL.md frontmatter (`name`, `description`) and (b) can run shell commands will work. Point the client at the `.claude/skills/` directory or copy folders into whatever skills path it expects.
 
-> **Recommended workflow:** Write code in **Cursor**, deploy & monitor with **Claude Code**.
+### Compatibility Matrix
 
----
+The skills are **tool-agnostic** — they're just Markdown procedures plus `bash` / `curl` calls to the GreenNode REST APIs. Every SKILL.md-aware client with shell access can run them end-to-end. Differences below are about **UX**, not capability.
 
-## Skills Reference
+| | Claude Code | Cursor | Codex | Other SKILL.md clients |
+|---|:-:|:-:|:-:|:-:|
+| Typical skills directory | `.claude/skills/` | `.cursor/skills/` | `.agents/skills/` | client-specific |
+| Invocation | `/skill-name` | `/skill-name` (Agent) | natural language / CLI | varies |
+| Auto-routing by description | ✅ native | ✅ | ✅ | depends on client |
+| Runs shell / HTTP from skills | ✅ | ✅ (Agent mode) | ✅ | requires shell tool |
+| Full deploy & monitor pipeline | ✅ | ✅ | ✅ | ✅ if shell available |
 
-### Lifecycle Overview
-
-```
-Scaffold → Configure → Code → Test → Deploy → Monitor → Teardown
-```
-
-### All Skills
-
-| # | Command | What it does |
-|---|---------|-------------|
-| 1 | `/agentbase-wizard` | Full lifecycle wizard — start here if you're new |
-| 2 | `/agentbase` | Platform reference & getting-started guide |
-| 3 | `/agentbase-manage` | Manage agent identities, external auth, and memory |
-| 4 | `/aip` | Create API keys & browse LLM models on AI Platform |
-| 5 | `/agentbase-deploy` | Deploy pipeline, runtime management, and container registry (vCR) |
-| 6 | `/agentbase-monitor` | Logs, metrics, and resource dashboard |
-| 7 | `/agentbase-teardown` | Delete all resources for a project (with dry-run) |
-
-### Subcommands
-
-**`/agentbase-wizard`** — `[init|test|resume|step-N|reset]`
-- `init [name] [--langgraph]` — Scaffold a new agent project
-- `test [validate|local|docker|preflight]` — Test before deploy
-- `resume` — Continue from last completed step
-- *(no args)* — Start full 9-step wizard
-
-**`/agentbase-manage`** — `<identity|auth|memory> <operation> [name]`
-- `identity` — Register/manage agent identities
-- `auth` — Store API keys & OAuth2 credentials for external services
-- `memory` — Conversation history & long-term memory stores
-
-**`/agentbase-deploy`** — `<deploy|runtime|vcr> [operation] [id-or-name]`
-- `deploy` — End-to-end: build → push → deploy → verify
-- `runtime` — CRUD runtimes, endpoints, versions, autoscaling
-- `vcr` — Manage Docker repos & robot accounts on vCR registry
-
-**`/agentbase-monitor`** — `<runtime-logs|endpoint-logs|metrics|dashboard> [runtime-id]`
-- `runtime-logs` — View runtime container logs
-- `endpoint-logs` — View endpoint-specific logs
-- `metrics` — CPU/RAM usage metrics
-- `dashboard` — Unified status of all platform resources
-
-**`/aip`** — `<api-keys|models> <operation> [name-or-uuid]`
-- `api-keys` — Create, list, get, update, delete API keys
-- `models` — Browse, enable, disable, rate-limit LLM models
-
-### Grouped by Stage
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  GETTING STARTED                                        │
-│  /agentbase-wizard ─── Start here (guided A→Z)          │
-│  /agentbase ────────── Platform reference                │
-├─────────────────────────────────────────────────────────┤
-│  BUILD & CONFIGURE                                      │
-│  /agentbase-wizard init  Scaffold project                │
-│  /agentbase-manage ───── Identity, auth, memory          │
-│  /aip ────────────────── API keys & LLM models           │
-├─────────────────────────────────────────────────────────┤
-│  TEST & DEPLOY                                          │
-│  /agentbase-wizard test  Test before deploy              │
-│  /agentbase-deploy ───── Deploy pipeline & runtimes      │
-├─────────────────────────────────────────────────────────┤
-│  OPERATE                                                │
-│  /agentbase-monitor ──── Logs, metrics, dashboard        │
-├─────────────────────────────────────────────────────────┤
-│  ADVANCED                                               │
-│  /agentbase-deploy vcr ─ Container Registry              │
-│  /agentbase-teardown ─── Delete resources                │
-└─────────────────────────────────────────────────────────┘
-```
+> The skills are authored and tuned primarily on Claude Code — that's where routing and prompts are validated. Functionally though, every tool with shell access can run them; Cursor / Codex / other clients just don't have a dedicated test pass yet.
 
 ---
 
-## Practical Examples
+## Prerequisites
 
-### Create a Chatbot from Zero
-
-```bash
-/agentbase-wizard init my-chatbot --langgraph   # Scaffold
-/aip api-keys create my-chatbot-key             # LLM access
-/agentbase-manage memory create                 # Memory (optional)
-/agentbase-wizard test local                    # Test
-/agentbase-deploy deploy                        # Deploy
-/agentbase-monitor runtime-logs <id>            # Monitor
-```
-
-### First Time? Use the Wizard
+Before any skill that hits the platform, set GreenNode IAM credentials:
 
 ```bash
-/agentbase-wizard              # Follow 9 steps from setup to deploy
-/agentbase-wizard resume       # Come back later and continue
+export GREENNODE_CLIENT_ID="<service-account-client-id>"
+export GREENNODE_CLIENT_SECRET="<service-account-secret>"
 ```
 
-### Debug a Failing Agent
+Put them in your shell profile or in a project-local `.env` (never commit it — `.env.example` is the tracked template).
 
-```bash
-/agentbase-monitor runtime-logs <runtime-id>
-/agentbase-monitor endpoint-logs <runtime-id> <endpoint-id>
-/agentbase-monitor metrics <runtime-id>
-```
-
-### Tear Down a Project
-
-```bash
-/agentbase-teardown my-chatbot --dry-run    # Preview first
-/agentbase-teardown my-chatbot              # Delete all resources
-```
+Skills that only read local files (e.g. `agentbase-wizard init`) work without credentials.
 
 ---
 
-## FAQ & Troubleshooting
+## Skills Index
 
-**Skills not showing up?**
-- Verify skills directory exists (`.claude/skills/`, `.cursor/skills/`, or `.agents/skills/`)
-- Each skill must have a valid `SKILL.md` with `name` and `description` frontmatter
-- Restart the tool
+| Skill | What it does |
+|---|---|
+| `/agentbase-wizard` | **Start here.** Guided 9-step lifecycle: scaffold → configure → code → test → deploy → verify. Also handles `init`, `test`, `resume`. |
+| `/agentbase` | Platform reference — architecture, services, IAM, "which skill should I use". |
+| `/agentbase-identity` | Register agent identities; store API keys / OAuth2 credentials for external services (OpenAI, Google, Slack, …). |
+| `/agentbase-llm` | Manage **platform** LLM access — API keys, model catalog, rate limits, OpenAI-compatible endpoint. |
+| `/agentbase-memory` | Conversation history, semantic memory, long-term memory stores (LangChain/LangGraph integration). |
+| `/agentbase-deploy` | Build & push Docker image, create/update Custom Agent runtimes (PUBLIC/VPC), deploy OpenClaw Telegram/Zalo bots, manage the Container Registry. |
+| `/agentbase-monitor` | Runtime logs, endpoint logs, CPU/RAM metrics, unified resource dashboard. |
+| `/agentbase-gateway` | Resource Gateway (MCP) CRUD; inbound auth (NONE / IAM / JWT); per-target outbound auth (APIKEY / OAUTH 2LO / 3LO); VPC routes; Policy Group binding. |
+| `/agentbase-policy` | Authorization policies — Policy Groups, Policies, and `statement` bodies (effect / principal / actions / resources / condition). Enforced today on the Resource Gateway. |
+| `/agentbase-teardown` | Delete **all** resources for a project. Always supports `--dry-run`. |
 
-**"401 Unauthorized" error?**
-- Check `GREENNODE_CLIENT_ID` and `GREENNODE_CLIENT_SECRET` are set
-- Verify Service Account has required IAM policies
+### Lifecycle Map
 
-**"OOMKilled" during deployment?**
-- Choose a larger flavor when creating the runtime
-- Optimize code to reduce memory usage
+```
+┌────────────────────────────────────────────────────────┐
+│ GET STARTED                                            │
+│   /agentbase-wizard ────── guided A → Z                │
+│   /agentbase ───────────── platform reference          │
+├────────────────────────────────────────────────────────┤
+│ BUILD & CONFIGURE                                      │
+│   /agentbase-wizard init ── scaffold project           │
+│   /agentbase-llm ────────── platform LLM access        │
+│   /agentbase-identity ───── identities & external auth │
+│   /agentbase-memory ─────── memory stores              │
+├────────────────────────────────────────────────────────┤
+│ TEST & DEPLOY                                          │
+│   /agentbase-wizard test ── validate / local / docker  │
+│   /agentbase-deploy ─────── build, push, deploy        │
+├────────────────────────────────────────────────────────┤
+│ OPERATE                                                │
+│   /agentbase-monitor ────── logs, metrics, dashboard   │
+│   /agentbase-gateway ────── Resource Gateway (MCP)     │
+│   /agentbase-policy ─────── access policies            │
+├────────────────────────────────────────────────────────┤
+│ ADVANCED                                               │
+│   /agentbase-deploy cr ──── Container Registry         │
+│   /agentbase-teardown ───── delete everything          │
+└────────────────────────────────────────────────────────┘
+```
 
-**How to resume a session?**
-- State is saved in `.agentbase-state.json` — use `/agentbase-wizard resume` or any skill will detect existing state
+### Common Subcommands
+
+```text
+/agentbase-wizard   [init <name> [--langchain|--langgraph] | test [validate|local|docker|preflight] | resume | step-N | reset]
+/agentbase-identity identity <create|list|get|update|delete>          [name]
+                    auth     <apikey|delegated|oauth2> <create|list|get|update|delete|retrieve> [name]
+/agentbase-llm      <api-keys|models> <create|list|get|update|delete|enable|disable|rate-limit> [name-or-uuid]
+/agentbase-memory   memory  <create|list|get|delete> [id]
+                    events  <list|create|delete>
+                    records <browse|search|generate-from-session|generate-from-content|insert|delete>
+/agentbase-deploy   Custom Agent: build → push → deploy, runtime CRUD, scale, versions
+                    OpenClaw:     create|list|start|stop|switch-version (Telegram/Zalo templates)
+                    Container Registry: repo info, credentials, images, artifacts
+/agentbase-monitor  <runtime-logs|endpoint-logs|metrics|dashboard> [runtime-id] [endpoint-id]
+/agentbase-gateway  <create|list|get|update|delete|routes|repair|flavors> [gateway-name]
+/agentbase-policy   <group|policy> <create|list|get|update|delete> [group-id-or-name] [policy-id-or-name]
+/agentbase-teardown <project-name> [--dry-run]
+```
+
+> These skills are driven by natural language — the syntax above is a quick reference, not a strict CLI. Tell the model what you want and it picks the right operation.
+
+---
+
+## End-to-End Example — Build a Chatbot
+
+```bash
+/agentbase-wizard init my-chatbot --langgraph   # scaffold
+/agentbase-llm api-keys create my-chatbot-key   # platform LLM key
+/agentbase-memory create                         # optional memory store
+/agentbase-wizard test local                     # smoke test locally
+/agentbase-deploy deploy                         # build → push → deploy
+/agentbase-monitor runtime-logs <runtime-id>     # watch it run
+```
+
+Or, first time, just:
+
+```text
+/agentbase-wizard
+```
+
+…and follow the prompts.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Skill doesn't appear | Confirm the file is at `<skills-dir>/<skill-name>/SKILL.md` with valid `name` + `description` frontmatter, then restart the tool. |
+| `401 Unauthorized` | `GREENNODE_CLIENT_ID` / `GREENNODE_CLIENT_SECRET` missing, expired, or service account lacks IAM policies. |
+| `OOMKilled` during deploy | Pick a larger flavor — ask `/agentbase-deploy` to list eligible flavors and resize the runtime. |
+| Want to resume a half-finished session | State persists in `.agentbase-state.json` — run `/agentbase-wizard resume`. |
+| Different skill behavior across tools | Tightest validator wins (typically Claude Desktop). Re-read the SKILL.md frontmatter; description length / characters may need trimming. |
+
+---
+
+## Repo Layout
+
+```
+greennode-agentbase-skills/
+├── .claude/skills/             # <-- the skills you install
+│   ├── agentbase/              # platform reference
+│   ├── agentbase-wizard/       # guided full-lifecycle wizard
+│   ├── agentbase-deploy/       # build, push, deploy + Container Registry + OpenClaw
+│   ├── agentbase-identity/     # agent identities & outbound auth
+│   ├── agentbase-llm/          # platform LLM API keys & models
+│   ├── agentbase-memory/       # conversation + semantic memory
+│   ├── agentbase-monitor/      # logs, metrics, dashboard
+│   ├── agentbase-gateway/      # Resource Gateway (MCP)
+│   ├── agentbase-policy/       # authorization policies
+│   └── agentbase-teardown/     # delete all resources
+└── README.md
+```
+
+Each skill folder contains a `SKILL.md` (the contract read by the AI tool) and any helper `scripts/` or `references/` it needs.
+
+---
+
+## Contributing & Extending
+
+- Each skill is just a folder with a `SKILL.md` file — copy an existing one as a template.
+- Frontmatter (`name`, `description`) is a public contract — renaming breaks downstream tools. Update `README.md` cross-references when you rename.
+- Skill descriptions must satisfy the **tightest** client validator (typically Claude Desktop's character limit). Verify before committing.
+- Test the skill end-to-end in Claude Code (or your target client) before opening a PR — descriptions drive auto-routing, so a small wording change can shift which skill is picked.
 
 ---
 
 ## Important Notes
 
-1. **Verify credentials first** – most errors are caused by missing IAM credentials
-2. **Run `/agentbase-wizard test validate`** before deploying
-3. **Use `--dry-run`** with teardown to preview before deleting
-4. **Never commit `.env` files** – only commit `.env.example`
-5. **Use the wizard** (`/agentbase-wizard`) if it's your first time
+1. **Verify IAM credentials first** — the majority of platform errors are missing `GREENNODE_CLIENT_ID` / `GREENNODE_CLIENT_SECRET` or insufficient policies.
+2. **Validate before deploy** — `/agentbase-wizard test validate`.
+3. **Always `--dry-run` teardown** before the real delete.
+4. **Never commit `.env`** — only `.env.example` is tracked.
+5. **First time? Use `/agentbase-wizard`** — it covers the full 9-step path.
