@@ -7,7 +7,7 @@ description: "Deploy and operate AI agents on GreenNode AgentBase. Supports two 
 
 Full end-to-end deployment, runtime management, and container registry operations for AI agents on GreenNode AgentBase. Covers both **Custom Agent** runtimes (user-built Docker images, resource type `/agent-runtimes`) and **OpenClaw** template agents (platform-built chat bots, resource type `/openclaws`).
 
-- **Console**: https://aiplatform.console.vngcloud.vn/runtime
+- **Console**: https://aiplatform.console.vngcloud.vn/agent-runtime?tab=runtime
 
 ## Resource Types — Pick the Right One
 
@@ -288,7 +288,7 @@ Deployment complete!
   Endpoint:  <endpoint-url>
   Health:    OK (200)
 
-Console: https://aiplatform.console.vngcloud.vn/runtime
+Console: https://aiplatform.console.vngcloud.vn/agent-runtime?tab=runtime
 ```
 
 Use `/agentbase-monitor` to monitor logs and debug issues after deployment.

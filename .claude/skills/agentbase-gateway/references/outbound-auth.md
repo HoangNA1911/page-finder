@@ -1,10 +1,10 @@
 # `outboundAuth` — How the Gateway Authenticates to Targets
 
-Every `target` registered on a gateway carries its own `outboundAuth` block. When the gateway forwards an MCP JSON-RPC call to that target, it attaches the credentials configured here. Secrets are **never** embedded in the gateway spec — both `APIKEY` and `OAUTH` reference a credential pre-registered in AgentBase Identity by `providerName`.
+Every `target` registered on a gateway carries its own `outboundAuth` block. When the gateway forwards an MCP JSON-RPC call to that target, it attaches the credentials configured here. Secrets are **never** embedded in the gateway spec — both `APIKEY` and `OAUTH` reference a credential pre-registered in AgentBase Identity by `providerName`. A third type, `NONE`, attaches no credential at all.
 
 ```json
 {
-  "type":              "APIKEY | OAUTH",
+  "type":              "NONE | APIKEY | OAUTH",
   "flow":              "2LO | 3LO",
   "headerName":        "string",
   "headerValuePrefix": "string",
@@ -15,16 +15,27 @@ Every `target` registered on a gateway carries its own `outboundAuth` block. Whe
 }
 ```
 
-`type` and `flow` are required. The other fields are required-conditional on `type` and `flow`. Unused fields are stripped server-side, so it's safe to send them as empty/null but cleaner to omit them.
+Only `type` is unconditionally required. `flow` is required **when `type` is `APIKEY` or `OAUTH`** (and is not used for `NONE`). The remaining fields are required-conditional on `type` and `flow`. Unused fields are stripped server-side, so it's safe to send them as empty/null but cleaner to omit them.
 
 **Matrix of allowed combinations:**
 
 | `type` | `flow` | Meaning |
 |---|---|---|
+| `NONE`   | — | No outbound credential attached. |
 | `APIKEY` | `2LO` | Gateway-level static API key, shared across all callers. |
 | `APIKEY` | `3LO` | Per-end-user API key — resolved per caller via Identity. |
 | `OAUTH`  | `2LO` | OAuth 2.0 client-credentials (machine-to-machine). |
 | `OAUTH`  | `3LO` | OAuth 2.0 authorization-code with end-user consent. |
+
+---
+
+## Type: `NONE`
+
+```json
+{ "outboundAuth": { "type": "NONE" } }
+```
+
+The gateway forwards the MCP call to the target without attaching any credential. No `flow`, `providerName`, or header fields are needed (they are ignored if sent). Use for upstream MCP servers that are open, or that authenticate by network position / IP allow-list rather than by a token the gateway must supply — e.g. a PRIVATE-network target reachable only from inside the VPC.
 
 ---
 
@@ -146,6 +157,7 @@ End-user consent required. The first time the gateway needs a token for a given 
 
 | Upstream auth scheme | `type` | `flow` |
 |---|---|---|
+| Upstream needs no credential (open, or IP/network-gated) | `NONE` | — |
 | Static API key shared by all callers (`X-Api-Key`, `Authorization: Bearer …`) | `APIKEY` | `2LO` |
 | Per-user API key / personal access token | `APIKEY` | `3LO` |
 | Machine-to-machine OAuth (no end-user) | `OAUTH` | `2LO` |
@@ -174,7 +186,7 @@ To clear every target, send `"targets": []`. **Never send `null`** — the API r
 
 | Mistake | Symptom |
 |---|---|
-| Missing `flow` on `APIKEY` or `OAUTH` | 400 validation error. `flow` is now required for both types. |
+| Missing `flow` on `APIKEY` or `OAUTH` | 400 validation error. `flow` is required whenever `type` is `APIKEY` or `OAUTH` (only `type=NONE` omits it). |
 | `headerName: "Authorization:"` (trailing colon) | 400 validation error. Drop the colon. |
 | `APIKEY` with no `providerName` (or named provider not registered in Identity) | 502 from upstream at first call. Register the provider via `/agentbase-identity` and re-PATCH the target. |
 | `APIKEY` + `3LO` behind an inbound auth of `NONE` | No stable principal → Identity can't pick a per-user key. Switch inbound to `IAM` or `JWT`. |

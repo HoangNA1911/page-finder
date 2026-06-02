@@ -15,7 +15,6 @@ Parse the user's arguments to determine the operation and optional group/policy 
 
 - **Policy**: `https://agentbase.api.vngcloud.vn/policy/api/v1`
 - **Operator catalog**: `https://agentbase.api.vngcloud.vn/policy/api/v1/policies/condition-operators`
-- **Swagger**: https://agentbase.api.vngcloud.vn/policy/swagger/index.html
 
 ## Authentication & Endpoints
 

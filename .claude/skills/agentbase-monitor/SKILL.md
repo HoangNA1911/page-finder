@@ -7,7 +7,7 @@ description: "Monitor, debug, view logs, metrics, and status dashboard for DEPLO
 
 Monitor, debug, and view status of agents running on GreenNode AgentBase Runtime.
 
-- **Console**: https://aiplatform.console.vngcloud.vn/runtime
+- **Console**: https://aiplatform.console.vngcloud.vn/agent-runtime?tab=runtime
 
 ## Authentication
 
@@ -303,7 +303,7 @@ If the user passes `--json`, output the raw JSON responses from all APIs as a si
   "runtimes": { ... },
   "memories": { ... },
   "aipApiKeys": { ... },
-  "vcrRepositories": { ... }
+  "crRepository": { ... }
 }
 ```
 

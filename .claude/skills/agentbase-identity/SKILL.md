@@ -12,7 +12,7 @@ Manage agent identities and outbound authentication providers on the GreenNode A
 ## Base URLs
 
 - **Identity & Auth**: `https://agentbase.api.vngcloud.vn/identity/api/v1`
-- **Console (Identity)**: https://aiplatform.console.vngcloud.vn/identity
+- **Console (Identity)**: https://aiplatform.console.vngcloud.vn/access-control
 
 ## Authentication & Endpoints
 

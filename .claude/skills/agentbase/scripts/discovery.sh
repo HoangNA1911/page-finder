@@ -111,9 +111,9 @@ do_all() {
     "${AIP_MANAGEMENT_URL}/v1/api-keys?page=${DEFAULT_FIRST_PAGE}&size=${DEFAULT_PAGE_SIZE}" \
     ".listData" "$tmpdir" &
 
-  fetch_resource "vcr_repositories" \
-    "${VCR_URL}/v1/repository?page=${DEFAULT_FIRST_PAGE}&size=${DEFAULT_PAGE_SIZE}" \
-    ".listData" "$tmpdir" &
+  fetch_resource "cr_repository" \
+    "${AGENTBASE_CR_URL}/repository" \
+    "[.]" "$tmpdir" &
 
   wait
 
@@ -127,7 +127,7 @@ do_all() {
     --slurpfile runtimes "$tmpdir/runtimes.json" \
     --slurpfile memories "$tmpdir/memories.json" \
     --slurpfile aip_api_keys "$tmpdir/aip_api_keys.json" \
-    --slurpfile vcr_repositories "$tmpdir/vcr_repositories.json" \
+    --slurpfile cr_repository "$tmpdir/cr_repository.json" \
     '{
       agentIdentities: $agent_identities[0],
       apiKeyProviders: $api_key_providers[0],
@@ -136,7 +136,7 @@ do_all() {
       runtimes: $runtimes[0],
       memories: $memories[0],
       aipApiKeys: $aip_api_keys[0],
-      vcrRepositories: $vcr_repositories[0]
+      crRepository: $cr_repository[0]
     }' > "$DISCOVERY_FILE"
 
   if [ "$VERBOSE" = true ]; then
@@ -168,8 +168,8 @@ do_all() {
   print_section "AIP API Keys" "$tmpdir/aip_api_keys.json" \
     '"\(.id // "unknown")\t\(.name // "-")\t\(.status // "-")\t\(.createdAt // .created_at // "-" | split("T")[0] // "-")"'
 
-  print_section "vCR Repositories" "$tmpdir/vcr_repositories.json" \
-    '"\(.id // "unknown")\t\(.name // "-")\t\(.createdAt // .created_at // "-" | split("T")[0] // "-")"'
+  print_section "Container Registry" "$tmpdir/cr_repository.json" \
+    '"\(.name // "-")\tregistry=\(.registryUrl // "-")\timages=\(.imageCount // 0)\tquota=\(.quotaUsed // 0)/\(.quotaLimit // 0)"'
 
   echo ""
   echo "Full JSON saved to: $DISCOVERY_FILE"
@@ -214,9 +214,9 @@ do_json() {
     "${AIP_MANAGEMENT_URL}/v1/api-keys?page=${DEFAULT_FIRST_PAGE}&size=${DEFAULT_PAGE_SIZE}" \
     ".listData" "$tmpdir" &
 
-  fetch_resource "vcr_repositories" \
-    "${VCR_URL}/v1/repository?page=${DEFAULT_FIRST_PAGE}&size=${DEFAULT_PAGE_SIZE}" \
-    ".listData" "$tmpdir" &
+  fetch_resource "cr_repository" \
+    "${AGENTBASE_CR_URL}/repository" \
+    "[.]" "$tmpdir" &
 
   wait
 
@@ -230,7 +230,7 @@ do_json() {
     --slurpfile runtimes "$tmpdir/runtimes.json" \
     --slurpfile memories "$tmpdir/memories.json" \
     --slurpfile aip_api_keys "$tmpdir/aip_api_keys.json" \
-    --slurpfile vcr_repositories "$tmpdir/vcr_repositories.json" \
+    --slurpfile cr_repository "$tmpdir/cr_repository.json" \
     '{
       agentIdentities: $agent_identities[0],
       apiKeyProviders: $api_key_providers[0],
@@ -239,7 +239,7 @@ do_json() {
       runtimes: $runtimes[0],
       memories: $memories[0],
       aipApiKeys: $aip_api_keys[0],
-      vcrRepositories: $vcr_repositories[0]
+      crRepository: $cr_repository[0]
     }' | tee "$DISCOVERY_FILE"
 }
 

@@ -324,7 +324,7 @@ A GreenNode AgentBase agent.
 
    > **Note**: When deployed on AgentBase Runtime, the IAM service account and Agent Identity are managed by the runtime system and automatically available to the SDK — no manual credential configuration needed in the container.
 
-4. (Optional, for local dev) Create an Agent Identity at https://aiplatform.console.vngcloud.vn/identity and set `agent_identity` in `.greennode.json` or `GREENNODE_AGENT_IDENTITY` env var. On AgentBase Runtime, this is managed automatically by the runtime system.
+4. (Optional, for local dev) Create an Agent Identity at https://aiplatform.console.vngcloud.vn/access-control and set `agent_identity` in `.greennode.json` or `GREENNODE_AGENT_IDENTITY` env var. On AgentBase Runtime, this is managed automatically by the runtime system.
 
 ## Configure LLM (LangChain/LangGraph only)
 
@@ -375,7 +375,7 @@ curl http://127.0.0.1:8080/health
 ## Deploy to AgentBase Runtime
 
 1. Build and push your Docker image (or use `/agentbase-deploy` skill)
-2. Create a Runtime at https://aiplatform.console.vngcloud.vn/runtime
+2. Create a Runtime at https://aiplatform.console.vngcloud.vn/agent-runtime?tab=runtime
 3. Create an Endpoint pointing to your Runtime
 
 See the [AgentBase Console](https://aiplatform.console.vngcloud.vn) to manage runtimes, identities, and memory.

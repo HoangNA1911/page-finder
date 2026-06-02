@@ -276,7 +276,7 @@ Follow the **Standalone: Testing & Validation (test)** procedures below to run t
      Endpoint:   <endpoint-url>
      Memory:     <memory-id or "Not configured">
 
-   Console: https://aiplatform.console.vngcloud.vn/runtime
+   Console: https://aiplatform.console.vngcloud.vn/agent-runtime?tab=runtime
    ```
 
 4. Suggest next steps:

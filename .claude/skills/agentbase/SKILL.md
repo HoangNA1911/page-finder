@@ -17,12 +17,12 @@ AgentBase is a dedicated infrastructure platform for enterprise AI agents by Gre
 
 ### 1. Identity Service
 - **Base URL**: `https://agentbase.api.vngcloud.vn/identity/api/v1`
-- **Console**: https://aiplatform.console.vngcloud.vn/identity
+- **Console**: https://aiplatform.console.vngcloud.vn/access-control
 - Manages agent identities and outbound authentication (API Keys, Delegated Keys, OAuth2)
 
 ### 2. Runtime Service
 - **Base URL**: `https://agentbase.api.vngcloud.vn/runtime`
-- **Console**: https://aiplatform.console.vngcloud.vn/runtime
+- **Console**: https://aiplatform.console.vngcloud.vn/agent-runtime?tab=runtime
 - Hosts two resource types:
   - **Custom Agent** (`/agent-runtimes`) — user-built Docker images. Supports autoscaling, named endpoints (canary + DEFAULT), versioning, zero-downtime deploys, and optional VPC network mode (`networkConfig` with `mode`, `vpcId`, `subnetId`, `routeCidrs`). Default trigger for wizard-built agents.
   - **OpenClaw** (`/openclaws`) — pre-built template agents (Telegram / Zalo chat bots) parameterized by version, flavor, model provider, and channel tokens. No Docker image required.

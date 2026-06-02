@@ -51,7 +51,7 @@ def get_current_time() -> str:
 #   model: LLM instance or model identifier string
 #   tools: list of @tool functions, callables, or dicts
 #   system_prompt: optional system message for the LLM
-# See: https://python.langchain.com/api_reference/langchain/agents/create_agent
+# See: https://reference.langchain.com/python/langchain/agents/
 agent = create_agent(llm, tools=[get_current_time])
 
 

@@ -8,10 +8,9 @@ Centralized reference for all API base URLs used across AgentBase skills. Skills
 
 | Valid Domain | Service |
 |---|---|
-| `agentbase.api.vngcloud.vn` | AgentBase (Identity, Runtime, Memory, Policy) |
+| `agentbase.api.vngcloud.vn` | AgentBase (Identity, Runtime, Memory, Policy, MCP Gateway, Container Registry) |
 | `aiplatform-hcm.api.vngcloud.vn` | AI Platform management (API keys, models) |
 | `maas-llm-aiplatform-hcm.api.vngcloud.vn` | LLM inference endpoint (OpenAI-compatible) |
-| `vcr.api.vngcloud.vn` | Container Registry |
 | `iam.api.vngcloud.vn` | IAM token endpoint |
 
 **NEVER use domains that are NOT in the table above.** In particular:
@@ -29,6 +28,7 @@ Before constructing any curl command, verify the domain matches one of the valid
 | Runtime | `https://agentbase.api.vngcloud.vn/runtime` | 1-indexed (`page=1` is first) |
 | Memory | `https://agentbase.api.vngcloud.vn/memory` | 1-indexed (`page=1` is first) |
 | Policy | `https://agentbase.api.vngcloud.vn/policy/api/v1` | 1-indexed (`page=1` is first) |
+| MCP Gateway | `https://agentbase.api.vngcloud.vn/gateway/api/v1` | 1-indexed (`page=1`, `pageSize` max 200); items in `.items`, paging in `.pagination` |
 
 ## AI Platform (AIP)
 
@@ -37,11 +37,11 @@ Before constructing any curl command, verify the domain matches one of the valid
 | Management API | `https://aiplatform-hcm.api.vngcloud.vn` | 1-indexed |
 | LLM Endpoint (OpenAI-compatible) | `https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1` | N/A |
 
-## Container Registry (vCR)
+## Container Registry (CR)
 
 | Service | Base URL | Pagination |
 |---------|----------|------------|
-| vCR API | `https://vcr.api.vngcloud.vn` | 1-indexed |
+| CR API | `https://agentbase.api.vngcloud.vn/cr/api/v1` | `GET /repository` is a single object (N/A); images/artifacts list: 1-indexed (`page=1`), items in `.data` |
 
 ## IAM
 
@@ -55,14 +55,15 @@ Before constructing any curl command, verify the domain matches one of the valid
 |---------|-------------|
 | IAM Service Accounts | `https://iam.console.vngcloud.vn/service-accounts` |
 | IAM Policies | `https://iam.console.vngcloud.vn/policies` |
-| Identity | `https://aiplatform.console.vngcloud.vn/identity` |
-| Runtime | `https://aiplatform.console.vngcloud.vn/runtime` |
+| Identity | `https://aiplatform.console.vngcloud.vn/access-control` |
+| Runtime | `https://aiplatform.console.vngcloud.vn/agent-runtime?tab=runtime` |
+| MCP Gateway | `https://aiplatform.console.vngcloud.vn/mcp-gateway` |
 | Memory | `https://aiplatform.console.vngcloud.vn/memory` |
 | AI Platform | `https://aiplatform.console.vngcloud.vn` |
 
 ## Response Shape Reference
 
-API responses use **two different pagination formats** depending on the service:
+API responses use **three different pagination formats** depending on the service:
 
 ### Identity Service (Spring-style)
 ```json
@@ -80,7 +81,7 @@ API responses use **two different pagination formats** depending on the service:
 - `number` — current page number (0-indexed)
 - `size` — page size
 
-### Runtime / Memory / vCR / AIP (GreenNode-style)
+### Runtime / Memory / AIP (GreenNode-style)
 ```json
 {
   "listData": [ ... ],
@@ -96,11 +97,29 @@ API responses use **two different pagination formats** depending on the service:
 - `page` — current page number (1-indexed)
 - `pageSize` — page size
 
+### MCP Gateway (nested-pagination)
+```json
+{
+  "items": [ ... ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 50,
+    "totalItems": 3,
+    "hasMore": false
+  }
+}
+```
+- `items` — array of items
+- `pagination.page` — current page number (1-indexed)
+- `pagination.pageSize` — page size (max 200)
+- `pagination.totalItems` — total item count across all pages
+- `pagination.hasMore` — whether more pages remain
+
 ### Quick Reference
 
-| Need | Identity Service | Runtime/Memory/vCR/AIP |
-|------|-----------------|----------------------|
-| Get items | `.content` | `.listData` |
-| Total count | `.totalElements` | `.totalItem` |
-| Total pages | `.totalPages` | `.totalPage` |
-| First page param | `page=0` | `page=1` |
+| Need | Identity Service | Runtime/Memory/AIP | MCP Gateway |
+|------|-----------------|----------------------|-------------|
+| Get items | `.content` | `.listData` | `.items` |
+| Total count | `.totalElements` | `.totalItem` | `.pagination.totalItems` |
+| Total pages | `.totalPages` | `.totalPage` | (use `.pagination.hasMore`) |
+| First page param | `page=0` | `page=1` | `page=1` |

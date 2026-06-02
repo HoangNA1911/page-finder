@@ -23,7 +23,7 @@ For JSON output, use `bash .claude/skills/agentbase/scripts/discovery.sh json`
 | Runtimes | `GET /agent-runtimes?page=1&size=100` | `https://agentbase.api.vngcloud.vn/runtime` | 1-indexed | `.listData` |
 | Memories | `GET /memories?page=1&size=100` | `https://agentbase.api.vngcloud.vn/memory` | 1-indexed | `.listData` |
 | AIP API Keys | `GET /v1/api-keys?page=1&size=100` | `https://aiplatform-hcm.api.vngcloud.vn` | 1-indexed | `.listData` |
-| vCR Repos | `GET /v1/repository?page=1&size=100` | `https://vcr.api.vngcloud.vn` | 1-indexed | `.listData` |
+| CR Repository | `GET /repository` | `https://agentbase.api.vngcloud.vn/cr/api/v1` | N/A (single repo) | `[.]` (bare object) |
 
 ## Error Handling
 

@@ -10,7 +10,6 @@ export AGENTBASE_MEMORY_URL="https://agentbase.api.vngcloud.vn/memory"
 export AGENTBASE_CR_URL="https://agentbase.api.vngcloud.vn/cr/api/v1"
 export AIP_MANAGEMENT_URL="https://aiplatform-hcm.api.vngcloud.vn"
 export AIP_LLM_URL="https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1"
-export VCR_URL="https://vcr.api.vngcloud.vn"
 export IAM_TOKEN_URL="https://iam.api.vngcloud.vn/accounts-api/v2/auth/token"
 
 # --- vServer (VPC / subnet discovery for Custom Agent VPC mode) ---
