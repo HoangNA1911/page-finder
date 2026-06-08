@@ -45,14 +45,9 @@ Run each check below and report pass/fail with actionable fix suggestions:
          return "OK", 200
      ```
 
-5. **Invocation endpoint handler** -- Search for a `POST /invocations` route handler.
-   - Fix: Add a `/invocations` endpoint. Example:
-     ```python
-     @app.route("/invocations", methods=["POST"])
-     def invocations():
-         data = request.get_json()
-         return jsonify({"result": "ok"})
-     ```
+5. **Invocation endpoint (informational, not a pass/fail check)** -- The runtime does NOT mandate any request path; only port 8080 + `GET /health` are required. Do not fail validation on this. Instead, detect how the agent is invoked and tell the user which endpoint to call into the agent:
+   - If the entrypoint uses the SDK (`GreenNodeAgentBaseApp` from `greennode_agentbase`), the SDK serves the entrypoint at `POST /invocations` — report `[INFO] Agent is invoked at POST /invocations (SDK convention)`.
+   - If the agent defines its own routes (Flask/FastAPI/etc.), report the path(s) it actually handles so the user knows where to send requests.
 
 6. **`.dockerignore` exclusions** -- Verify `.dockerignore` exists and excludes: `.env`, `.env.*`, `.greennode.json`, `.agentbase/`, `*.credentials.json`, `__pycache__`, `.git`.
    - Fix: Create or update `.dockerignore` with the missing entries. Offer to create it automatically.
@@ -70,12 +65,12 @@ Validation Results
 [PASS] Entrypoint main.py exists and imports GreenNodeAgentBaseApp
 [FAIL] Health endpoint handler not found
        -> Add a GET /health route returning 200 to main.py
-[PASS] Invocation endpoint handler found (POST /invocations)
+[INFO] Agent is invoked at POST /invocations (SDK convention)
 [WARN] .dockerignore missing .greennode.json
        -> Add ".greennode.json" to .dockerignore
 [PASS] requirements.txt includes greennode-agentbase
 
-Result: 5/7 passed, 1 failed, 1 warning
+Result: 4/6 passed, 1 failed, 1 warning
 ```
 
 ---
@@ -133,12 +128,14 @@ Run the agent locally and test endpoints against the runtime service contract.
 
 6. **Run contract tests**:
 
+   `GET /health` is the only required path. The invocation path below is the one detected in static check #5 — `POST /invocations` for SDK-based agents, or whatever route the agent defined itself. Substitute the actual path.
+
    | Test | Request | Expected |
    |------|---------|----------|
    | Health | `GET /health` | HTTP 200 |
-   | Invocation (valid) | `POST /invocations` with `{"message": "test"}` | HTTP 200 with response body |
-   | Invocation (empty) | `POST /invocations` with `{}` | No crash (4xx OK, 5xx is warning) |
-   | Invocation (missing memory headers) | `POST /invocations` without User-Id/Session-Id headers (only if agent uses memory) | Error response indicating missing headers |
+   | Invocation (valid) | `POST <invocation-path>` with `{"message": "test"}` | HTTP 200 with response body |
+   | Invocation (empty) | `POST <invocation-path>` with `{}` | No crash (4xx OK, 5xx is warning) |
+   | Invocation (missing memory headers) | `POST <invocation-path>` without User-Id/Session-Id headers (only if agent uses memory) | Error response indicating missing headers |
 
    **Important**: If the agent uses AgentBase Memory (detected by `AgentBaseMemoryEvents` or `MemoryClient` imports), **always include** `X-GreenNode-AgentBase-User-Id` and `X-GreenNode-AgentBase-Session-Id` headers in test requests. Without these headers, memory-enabled agents will return an error.
 
