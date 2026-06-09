@@ -418,9 +418,12 @@ do_endpoints() {
     create)  do_endpoints_create "$@" ;;
     update)  do_endpoints_update "$@" ;;
     delete)  do_endpoints_delete "$@" ;;
+    start)   do_endpoints_start "$@" ;;
+    stop)    do_endpoints_stop "$@" ;;
     logs)    do_endpoints_logs "$@" ;;
     metrics) do_endpoints_metrics "$@" ;;
-    *)       echo "ERROR: Unknown endpoints sub-action '$sub_action'. Expected: list, create, update, delete, logs, metrics" >&2; return 1 ;;
+    events)  do_endpoints_events "$@" ;;
+    *)       echo "ERROR: Unknown endpoints sub-action '$sub_action'. Expected: list, create, update, delete, start, stop, logs, metrics, events" >&2; return 1 ;;
   esac
 }
 
@@ -510,6 +513,33 @@ do_endpoints_delete() {
   api_call DELETE "${BASE_URL}/${id}/endpoints/${endpoint_id}"
 }
 
+do_endpoints_start() {
+  local id="${1:-}"; shift 2>/dev/null || true
+  local endpoint_id="${1:-}"
+  if [ -z "$id" ] || [ -z "$endpoint_id" ]; then
+    echo "ERROR: Runtime ID and Endpoint ID are required for endpoints start" >&2; return 1
+  fi
+  api_call POST "${BASE_URL}/${id}/endpoints/${endpoint_id}/start"
+}
+
+do_endpoints_stop() {
+  local id="${1:-}"; shift 2>/dev/null || true
+  local endpoint_id="${1:-}"
+  if [ -z "$id" ] || [ -z "$endpoint_id" ]; then
+    echo "ERROR: Runtime ID and Endpoint ID are required for endpoints stop" >&2; return 1
+  fi
+  api_call POST "${BASE_URL}/${id}/endpoints/${endpoint_id}/stop"
+}
+
+do_endpoints_events() {
+  local id="${1:-}"; shift 2>/dev/null || true
+  local endpoint_id="${1:-}"
+  if [ -z "$id" ] || [ -z "$endpoint_id" ]; then
+    echo "ERROR: Runtime ID and Endpoint ID are required for endpoints events" >&2; return 1
+  fi
+  api_call GET "${BASE_URL}/${id}/endpoints/${endpoint_id}/events"
+}
+
 do_endpoints_logs() {
   local id="${1:-}"; shift 2>/dev/null || true
   local endpoint_id="${1:-}"; shift 2>/dev/null || true
@@ -542,6 +572,86 @@ do_endpoints_metrics() {
   local query
   query=$(build_query "fromTimestamp=$from_time" "toTimestamp=$to_time")
   api_call GET "${BASE_URL}/${id}/endpoints/${endpoint_id}/metrics${query}"
+}
+
+# Build a URL-encoded query string from repeated "key=value" pairs.
+# Args: each positional is a raw "key=value" string. Values are %-encoded.
+build_passthrough_query() {
+  local query=""
+  for pair in "$@"; do
+    local key="${pair%%=*}"
+    local val="${pair#*=}"
+    [ "$pair" = "$key" ] && val=""   # no '=' present → empty value
+    local enc_key enc_val
+    enc_key=$(jq -rn --arg s "$key" '$s|@uri')
+    enc_val=$(jq -rn --arg s "$val" '$s|@uri')
+    [ -n "$query" ] && query+="&" || query="?"
+    query+="${enc_key}=${enc_val}"
+  done
+  echo "$query"
+}
+
+# Distributed tracing — thin passthrough to the runtime tracing backend.
+# The query parameters (other than traceId / tagKey) and the response body are
+# defined by the tracing backend, NOT by the runtime API spec. Pass backend
+# query params verbatim via repeated --param key=value. Response is the
+# backend's raw JSON string.
+do_traces() {
+  local sub_action="${1:-}"; shift 2>/dev/null || true
+
+  case "$sub_action" in
+    search)     do_traces_search "$@" ;;
+    get)        do_traces_get "$@" ;;
+    tag-values) do_traces_tag_values "$@" ;;
+    *)          echo "ERROR: Unknown traces sub-action '$sub_action'. Expected: search, get, tag-values" >&2; return 1 ;;
+  esac
+}
+
+do_traces_search() {
+  local params=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --param) params+=("$2"); shift 2 ;;
+      *) echo "ERROR: Unknown option for traces search: $1 (use --param key=value)" >&2; return 1 ;;
+    esac
+  done
+  local query
+  query=$(build_passthrough_query ${params[@]+"${params[@]}"})
+  api_call GET "${BASE_URL}:search-traces${query}"
+}
+
+do_traces_get() {
+  local trace_id="${1:-}"; shift 2>/dev/null || true
+  if [ -z "$trace_id" ]; then
+    echo "ERROR: Trace ID is required for traces get" >&2; return 1
+  fi
+  local params=("traceId=$trace_id")
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --param) params+=("$2"); shift 2 ;;
+      *) echo "ERROR: Unknown option for traces get: $1 (use --param key=value)" >&2; return 1 ;;
+    esac
+  done
+  local query
+  query=$(build_passthrough_query ${params[@]+"${params[@]}"})
+  api_call GET "${BASE_URL}:get-trace${query}"
+}
+
+do_traces_tag_values() {
+  local tag_key="${1:-}"; shift 2>/dev/null || true
+  if [ -z "$tag_key" ]; then
+    echo "ERROR: Tag key is required for traces tag-values" >&2; return 1
+  fi
+  local params=("tagKey=$tag_key")
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --param) params+=("$2"); shift 2 ;;
+      *) echo "ERROR: Unknown option for traces tag-values: $1 (use --param key=value)" >&2; return 1 ;;
+    esac
+  done
+  local query
+  query=$(build_passthrough_query ${params[@]+"${params[@]}"})
+  api_call GET "${BASE_URL}:trace-search-tag-values${query}"
 }
 
 do_flavors() {
@@ -582,9 +692,17 @@ do_help() {
   endpoints create ID --name NAME [--version N]            Create endpoint
   endpoints update ID ENDPOINT_ID --version N              Update endpoint
   endpoints delete ID ENDPOINT_ID                          Delete endpoint
+  endpoints start ID ENDPOINT_ID                           Start (resume) an endpoint
+  endpoints stop ID ENDPOINT_ID                            Stop an endpoint
   endpoints logs ID ENDPOINT_ID [log flags]                Get endpoint logs
   endpoints metrics ID ENDPOINT_ID [--from-time ISO] [--to-time ISO]
                                                            Get endpoint metrics
+  endpoints events ID ENDPOINT_ID                          Get infrastructure events for an endpoint
+  traces search [--param key=value ...]                    Search distributed traces
+  traces get TRACE_ID [--param key=value ...]              Get a single trace by ID
+  traces tag-values TAG_KEY [--param key=value ...]        List values for a trace tag key
+                                                           (trace --param keys/values and the response are
+                                                            defined by the tracing backend, not this API)
   flavors                                                  List available flavors
   help                                                     Show this help message"
 }
@@ -600,6 +718,7 @@ case "$ACTION" in
   logs)                  do_logs "$@" ;;
   versions)              do_versions "$@" ;;
   endpoints)             do_endpoints "$@" ;;
+  traces)                do_traces "$@" ;;
   flavors)               do_flavors ;;
   help)                  do_help ;;
   *)                     echo "ERROR: Unknown action '$ACTION'. Run with 'help' for usage." >&2; exit 1 ;;

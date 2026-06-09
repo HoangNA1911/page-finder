@@ -105,6 +105,53 @@ bash .claude/skills/agentbase/scripts/runtime.sh endpoints metrics $RUNTIME_ID $
 
 ---
 
+### events [id] [endpointId] -- View infrastructure events for an endpoint
+
+Fetch the infrastructure-level events emitted while deploying and running an endpoint. This is the **first place to look when an endpoint is not `ACTIVE` but the logs are empty** — startup failures (image pull errors, out-of-memory kills, scheduling/capacity failures, health-probe failures) surface here as events before any application log is produced.
+
+**Command**:
+```bash
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints events $RUNTIME_ID $ENDPOINT_ID
+```
+
+**Response**: array of event objects, each with:
+- `message` (string) -- the event message (e.g. `Back-off pulling image ...`, `out of memory`, `insufficient capacity`)
+- `lastTimestamp` (date-time) -- when the event last occurred
+
+**Common event signatures** (match against the `message` text):
+
+| Event message indicates | Meaning | Next step |
+|------------------------|---------|-----------|
+| Image pull failure (e.g. `pulling image` / `ErrImagePull`) | Image cannot be pulled | Verify `imageUrl` and registry credentials (`imageAuth`) on the runtime version |
+| Out of memory (e.g. `OOM` / `out of memory`) | Instance exceeded its memory limit | Scale up the flavor or fix the memory leak (cross-check `metrics`) |
+| Scheduling / capacity failure (e.g. `insufficient` / `no capacity`) | No capacity to place the instance | Usually a flavor/capacity issue — try a smaller flavor or retry later |
+| Health probe failure (e.g. `probe failed`) | `/health` not returning 200 | Verify the health endpoint (see Log Analysis Guide) |
+| Crash / restart loop | Instance keeps crashing on startup | Check endpoint logs for the startup traceback |
+
+---
+
+### traces -- Distributed tracing (passthrough)
+
+Query distributed traces for agent runtimes. These commands are a **thin passthrough** to the platform's tracing backend: the accepted query parameters (other than `traceId` / `tagKey`) and the response body shape are defined by that backend, **not by the runtime API spec**. Pass backend query params verbatim via repeated `--param key=value`; the response is the backend's raw JSON string.
+
+> **Param semantics not documented here.** Do NOT invent trace query param names. If the user needs specific filters (time range, service, tags, min duration, etc.), source the exact param keys from the tracing backend's own documentation or the console's network calls before using them. Without that, the commands still work as a raw passthrough.
+
+**Commands**:
+```bash
+# Search traces (params forwarded to the tracing backend)
+bash .claude/skills/agentbase/scripts/runtime.sh traces search --param key=value [--param key=value ...]
+
+# Get a single trace by ID
+bash .claude/skills/agentbase/scripts/runtime.sh traces get $TRACE_ID [--param key=value ...]
+
+# List available values for a trace tag key (for building filters)
+bash .claude/skills/agentbase/scripts/runtime.sh traces tag-values $TAG_KEY [--param key=value ...]
+```
+
+`--param` values are URL-encoded automatically. The response is returned as-is (a JSON string from the backend) — parse it according to the backend's schema.
+
+---
+
 ## Current Limitations
 
 | Feature | Status |
@@ -165,7 +212,8 @@ Agent not responding?
 │  └─ Status = ACTIVE → Check endpoint logs (see endpoint-logs above)
 │     ├─ Logs show Python traceback → Fix the code error
 │     ├─ Logs show "Health check failed" → Fix health endpoint
-│     ├─ No recent logs → Container may have crashed silently, check metrics (see metrics above)
+│     ├─ No recent logs → Check endpoint events (see events above) for infrastructure-level
+│     │                    failures (image pull, out-of-memory, capacity), then metrics
 │     └─ Logs look normal → Issue may be in request routing, check endpoint URL
 
 Agent returns errors (4xx/5xx)?
@@ -321,14 +369,16 @@ For the status dashboard, fetch the first page of each service with a reasonable
 
 ## Instructions
 
-1. Parse the user's argument to determine the operation (`runtime-logs`, `endpoint-logs`, `metrics`, `dashboard`).
-2. **For logs/metrics operations:**
+1. Parse the user's argument to determine the operation (`runtime-logs`, `endpoint-logs`, `metrics`, `events`, `traces`, `dashboard`).
+2. **For logs/metrics/events operations:**
    a. If a runtime ID is needed and not provided, list runtimes first (`bash .claude/skills/agentbase/scripts/runtime.sh list`) and ask the user to pick one.
    b. If an endpoint ID is needed, list endpoints for the runtime (`bash .claude/skills/agentbase/scripts/runtime.sh endpoints list $RUNTIME_ID`) and ask the user to pick one.
    c. For logs, default to `--from 0 --limit 100` to fetch the most recent entries. Use `--from` to paginate if more logs are needed (max `--from`: 5000, max `--limit`: 500). Use `--query` for keyword filtering and `--from-time`/`--to-time` for time range filtering when the user specifies these.
    d. Present log output in a readable format, highlighting errors and warnings. Each log entry has `timestamp` and `content` fields.
    e. For metrics, display CPU (`cpuCoresUsage`) and RAM (`memoryBytesUsage`, convert values to MB/GB) as time-series data points. Use `--from-time`/`--to-time` for historical ranges. To show usage as percentages, fetch available flavors via `bash .claude/skills/agentbase/scripts/runtime.sh flavors` (returns `id`, `name`, `cpu`, `ram` for each flavor), then match the runtime's `flavorId` to get CPU/RAM limits.
-3. **For dashboard operation:**
+   f. For events, present each event as `lastTimestamp — message`, newest first. Match messages against the "Common event signatures" table to suggest a next step. Use this especially when an endpoint is stuck out of `ACTIVE` and logs are empty.
+3. **For traces operation:** these are a passthrough to the tracing backend. Do NOT invent query param names — only pass `--param` keys the user supplies or that you sourced from the backend's docs/console. Return the backend's JSON response and parse per its schema.
+4. **For dashboard operation:**
    a. Parse the user's argument for `--json` flag.
    b. Run `bash .claude/skills/agentbase/scripts/discovery.sh` (or `bash .claude/skills/agentbase/scripts/discovery.sh json` for raw JSON).
    c. Format the results as a dashboard (or raw JSON if `--json`).

@@ -244,6 +244,13 @@ bash .claude/skills/agentbase/scripts/runtime.sh endpoints update $RUNTIME_ID $E
 bash .claude/skills/agentbase/scripts/runtime.sh endpoints delete $RUNTIME_ID $ENDPOINT_ID
 ```
 
+**Start / stop endpoint** (lifecycle control — stop halts the endpoint from serving traffic without deleting it; start resumes it):
+```bash
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints stop  $RUNTIME_ID $ENDPOINT_ID
+bash .claude/skills/agentbase/scripts/runtime.sh endpoints start $RUNTIME_ID $ENDPOINT_ID
+```
+Both return HTTP 200 with no body. After issuing, poll `endpoints list` and watch the endpoint `status` change to confirm the transition completed. **Confirm with the user before stopping** — a stopped endpoint stops serving traffic.
+
 **Endpoint response fields**: `id`, `agentRuntimeId`, `name`, `version`, `currentReplicaCount`, `url`, `status`, `createdAt`, `updatedAt`.
 
 **Endpoint logs**:
