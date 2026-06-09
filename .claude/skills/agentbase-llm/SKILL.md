@@ -55,7 +55,7 @@ bash .claude/skills/agentbase/scripts/aip.sh api-keys create --name my-agent-key
 1. List all existing API keys using `aip.sh api-keys list`.
 2. Present the list to the user and explain that their API key quota is full.
 3. Suggest the user **delete an unused key** to free up quota. Ask which key they want to delete.
-4. After the user confirms deletion, delete the key. Note: deletion is **async** — you must poll `aip.sh api-keys get <name>` every 5-10 seconds until you get a 404 (key no longer exists). Wait for deletion to complete before proceeding. If polling doesn't complete within 2-3 minutes, inform the user that the operation is taking longer than expected.
+4. After the user confirms deletion, delete the key. Note: deletion is **async** — you must poll `aip.sh api-keys list --name <name>` every 5-10 seconds until no key with that **exact** name remains in `listData` (the `--name` filter matches substrings, so verify the exact name is gone, not just that the list is non-empty). Wait for deletion to complete before proceeding. If it doesn't complete within 2-3 minutes, inform the user that the operation is taking longer than expected.
 5. Retry creating the new key **once**. If creation fails again, inform the user that the issue is not quota-related and ask them to check their account status or billing. Do NOT loop — max 1 retry after a deletion.
 
 After creating a key, remind the user:
@@ -64,10 +64,17 @@ After creating a key, remind the user:
 > - **API Key:** saved to `.env` as `LLM_API_KEY`. Verify with `bash .claude/skills/agentbase/scripts/check_credentials.sh llm`
 
 ### api-keys get [name]
-Get details of a specific API key.
+Get details of a specific API key. The `key` field is redacted in stdout by design — the plaintext key is never printed.
 
 ```bash
 bash .claude/skills/agentbase/scripts/aip.sh api-keys get my-agent-key
+```
+
+To **load an existing key into `.env`** (e.g. when reusing a key instead of creating one), add `--save-env`. The key is written to `.env` as `LLM_API_KEY` silently — it never appears in output:
+
+```bash
+bash .claude/skills/agentbase/scripts/aip.sh api-keys get my-agent-key --save-env
+# then verify: bash .claude/skills/agentbase/scripts/check_credentials.sh llm
 ```
 
 ### api-keys update [name]
@@ -78,13 +85,15 @@ bash .claude/skills/agentbase/scripts/aip.sh api-keys update my-agent-key --defa
 ```
 
 ### api-keys delete [name]
-Delete an API key. Confirm with the user before proceeding. The script sends the DELETE request and returns immediately. You must poll `api-keys get <name>` until you get a 404 to confirm deletion.
+Delete an API key. Confirm with the user before proceeding. The script sends the DELETE request and returns immediately. You must confirm deletion by polling `api-keys list --name <name>` until no entry with that exact name remains in `listData`.
 
 ```bash
 bash .claude/skills/agentbase/scripts/aip.sh api-keys delete my-agent-key
 ```
 
-Confirm deletion to the user only after polling confirms the key is gone (404 response). Do NOT confirm immediately after the script returns — deletion is async.
+Note: a key can only be deleted once it is `ACTIVE` — deleting a `CREATING` key fails, and a per-account lock rejects concurrent deletes (`400 "User is already deleting API keys."`).
+
+Confirm deletion to the user only after the key no longer appears in `api-keys list`. Do NOT confirm immediately after the script returns — deletion is async.
 
 ---
 
@@ -213,15 +222,16 @@ const response = await client.chat.completions.create({
      - **Create a new key** — proceed to create a new API key
    - Do NOT auto-select or auto-use any existing key. The user must explicitly choose.
    - If the user is unsure which key to use, list all keys with their names and status, and recommend the one marked `isDefault: true`. If the user says "use any" or "just pick one", use the default key.
+   - **Once the user picks an existing key, load it into `.env`** by running `aip.sh api-keys get <name> --save-env`. Reusing a key without this step leaves `LLM_API_KEY` unset — the key is only auto-saved on create, so an existing key must be captured explicitly. Confirm with `check_credentials.sh llm`.
 4. **When creating a new API key fails with a quota error:**
    - Do NOT retry the creation. Explain that the API key quota is full.
    - List all existing API keys and present them to the user.
    - Guide the user to **delete an unused key** to free up quota. Ask which key they want to delete.
    - After deletion completes, retry creating the new key.
 5. For `api-keys create`, ask for the key name if not provided. Validate it matches `^[a-z0-9\-]{5,50}$`.
-6. **api-keys create is async**: the script sends the POST request, saves the key to `.env`, and returns immediately. You must then poll the status yourself by calling `aip.sh api-keys get <name>` every 5-10 seconds until the `status` field is `ACTIVE`. Only show the key and OpenAI usage info after confirming ACTIVE.
-7. **api-keys delete is async**: the script sends the DELETE request and returns immediately. You must then poll by calling `aip.sh api-keys get <name>` every 5-10 seconds until you get a 404 (key no longer exists). Only confirm deletion to the user after the key is gone.
-8. After creating an API key, always show the OpenAI-compatible usage info (base URL + key).
+6. **api-keys create is async**: the script POSTs to the v2 endpoint, which returns `200` with the plaintext key in the response (initial `status: CREATING`). The script saves the key to `.env` immediately and returns. You must then poll the status by calling `aip.sh api-keys get <name>` every 5-10 seconds until the `status` field is `ACTIVE`. The key is already in `.env` from the create step — do NOT re-run `--save-env` here, it is redundant. The plaintext key is redacted from all output by design — never expect to see it; confirm it landed with `check_credentials.sh llm`.
+7. **api-keys delete is async**: the script sends the DELETE request and returns immediately. You must then poll by calling `aip.sh api-keys list --name <name>` every 5-10 seconds until no key with that **exact** name remains in `listData` (the `--name` filter is a substring match — confirm the exact name is absent). Only confirm deletion to the user after the key is gone. Note: a key must be `ACTIVE` to be deleted, and concurrent deletes are rejected with `400 "User is already deleting API keys."`.
+8. After creating an API key, show the OpenAI-compatible usage info: the **base URL** and that the key is stored in `.env` as `LLM_API_KEY` (verify with `check_credentials.sh llm`). Never print the plaintext key — it is redacted from all command output by design.
 9. When listing or showing model details, highlight the model `path` field — this is what must be passed as the `model` parameter when calling the LLM API (not `code`; if `path` is missing, fall back to `code`). Do NOT show pricing/billing info (`inputPrice`, `outputPrice`) to the user — pricing may be subject to negotiated contracts; refer users to the billing dashboard instead.
 10. When the user wants to set up LLM access for an agent, guide them through: (1) browse models to pick one, (2) list existing API keys and reuse one, or create a new key if needed, (3) use the key with the OpenAI SDK pointing to the GreenNode endpoint.
 11. **When the user needs to pick a model**, list available models filtered by `status=ENABLED` and sorted by most recent first, then **let the user choose**. Do not auto-select or recommend a specific model unless the user explicitly asks for a recommendation.

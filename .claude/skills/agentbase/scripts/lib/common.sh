@@ -170,6 +170,16 @@ api_call() {
 
   # Determine save path
   mkdir -p "$AGENTBASE_DIR"
+  # .agentbase holds cached tokens and raw API responses (including plaintext
+  # keys) — keep it out of git and images, mirroring save_env_var.sh's .env handling.
+  if [ -f .gitignore ]; then
+    grep -qxF '.agentbase/' .gitignore 2>/dev/null || echo '.agentbase/' >> .gitignore
+  else
+    echo '.agentbase/' > .gitignore
+  fi
+  if [ -f .dockerignore ] && ! grep -qxF '.agentbase/' .dockerignore 2>/dev/null; then
+    echo '.agentbase/' >> .dockerignore
+  fi
   local save_path="${SAVE_AS:-$AGENTBASE_DIR/last_response.json}"
   local save_dir
   save_dir=$(dirname "$save_path")

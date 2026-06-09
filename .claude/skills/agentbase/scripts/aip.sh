@@ -7,6 +7,7 @@ source "$SCRIPTS_DIR/lib/config.sh"
 source "$SCRIPTS_DIR/lib/common.sh"
 
 API_KEYS_URL="$AIP_MANAGEMENT_URL/v1/api-keys"
+API_KEYS_V2_URL="$AIP_MANAGEMENT_URL/v2/api-keys"
 MODELS_URL="$AIP_MANAGEMENT_URL/v1/models"
 MODELS_V2_URL="$AIP_MANAGEMENT_URL/v2/models"
 
@@ -67,9 +68,11 @@ apikeys_create() {
     '{name: $name, isDefault: $isDefault}')
 
   # Save full response to dedicated file (immune to overwrites by subsequent calls)
-  # Redact key from stdout so it doesn't leak into LLM context
+  # Redact key from stdout so it doesn't leak into LLM context.
+  # Use v2: v1 POST returns HTTP 500 (key still created, but no body) — v2 returns
+  # 200 with the plaintext key in the response, so the .env capture below works.
   SAVE_AS="$AGENTBASE_DIR/aip_apikey_create_response.json" REDACT_FIELDS="key" \
-    api_call POST "$API_KEYS_URL" "$body" || return 1
+    api_call POST "$API_KEYS_V2_URL" "$body" || return 1
 
   # Extract key from saved response and write to .env via save_env_var.sh
   # (key never appears on command line — piped via stdin)
@@ -79,19 +82,45 @@ apikeys_create() {
   if [ -n "$raw_key" ]; then
     echo "$raw_key" | bash "$(dirname "$0")/save_env_var.sh" --key LLM_API_KEY --value-stdin >&2
   else
-    echo "WARNING: Could not extract API key from response. Retrieve it manually with: api-keys get $name" >&2
+    echo "WARNING: Could not extract API key from response. Once status is ACTIVE, save it with: api-keys get $name --save-env" >&2
   fi
 
   echo "Key created. Poll status with: api-keys get $name" >&2
 }
 
 apikeys_get() {
-  local name="${1:-}"
+  local name="" save_env="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --save-env) save_env="true"; shift ;;
+      -*) echo "ERROR: Unknown option for api-keys get: $1" >&2; return 1 ;;
+      *)
+        if [ -z "$name" ]; then name="$1"; shift
+        else echo "ERROR: Unexpected argument for api-keys get: $1" >&2; return 1; fi
+        ;;
+    esac
+  done
+
   if [ -z "$name" ]; then
     echo "ERROR: Name argument is required for api-keys get" >&2
     return 1
   fi
-  REDACT_FIELDS="key" api_call GET "${API_KEYS_URL}/${name}"
+
+  REDACT_FIELDS="key" api_call GET "${API_KEYS_URL}/${name}" || return 1
+
+  # --save-env: persist the key to .env without ever printing it. The server
+  # returns the full plaintext key on get, and api_call saved the unredacted
+  # response to last_response.json — extract from there (key never on cmdline).
+  if [ "$save_env" = "true" ]; then
+    local raw_key=""
+    raw_key=$(jq -r '.data.key // .key // empty' "$AGENTBASE_DIR/last_response.json" 2>/dev/null)
+    if [ -n "$raw_key" ]; then
+      echo "$raw_key" | bash "$(dirname "$0")/save_env_var.sh" --key LLM_API_KEY --value-stdin >&2
+    else
+      echo "WARNING: --save-env: could not extract key (it may be empty until status is ACTIVE)." >&2
+    fi
+  fi
 }
 
 apikeys_update() {
@@ -132,8 +161,8 @@ apikeys_delete() {
     return 1
   fi
 
-  REDACT_FIELDS="key" api_call DELETE "${API_KEYS_URL}/${name}" || return 1
-  echo "Delete request sent. Poll status with: api-keys get $name (expect 404 when done)" >&2
+  REDACT_FIELDS="key" api_call DELETE "${API_KEYS_V2_URL}/${name}" || return 1
+  echo "Delete request sent. Confirm with: api-keys list --name $name (done when that exact name is gone from listData)" >&2
 }
 
 # =====================================================================
@@ -254,7 +283,7 @@ do_help() {
     "Manage GreenNode AI Platform API keys and LLM models." \
     "  api-keys list   [--name NAME] [--page N] [--size N]   List API keys
   api-keys create --name NAME [--default]                Create a new API key
-  api-keys get    NAME                                   Get API key by name
+  api-keys get    NAME [--save-env]                      Get API key (--save-env writes key to .env)
   api-keys update NAME [--default true|false]            Update API key
   api-keys delete NAME                                   Delete API key
   models   list   [--name N] [--providers P1,P2] [--types T1,T2] [--status S] [--page N] [--size N]
