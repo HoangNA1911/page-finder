@@ -316,7 +316,18 @@ A GreenNode AgentBase agent.
    **Option A** - Environment variables:
    ```bash
    cp .env.example .env
-   # Edit .env with your credentials
+   # Import values with helper scripts; do not paste secrets into chat
+   ```
+
+   For IAM credentials, prefer the helper script so secrets stay out of shell history:
+   ```bash
+   echo '<client_secret>' | bash .claude/skills/agentbase/scripts/save_iam_credentials.sh \
+     --client-id "<client_id>" --secret-stdin
+   ```
+
+   For non-IAM env vars such as `LLM_MODEL`, `LLM_BASE_URL`, or `MEMORY_ID`, use:
+   ```bash
+   bash .claude/skills/agentbase/scripts/save_env_var.sh --key <VAR> --value "<value>"
    ```
 
    **Option B** - Config file (already created):
@@ -328,7 +339,7 @@ A GreenNode AgentBase agent.
 
 ## Configure LLM (LangChain/LangGraph only)
 
-This project uses any OpenAI-compatible LLM provider. Set the following in `.env`:
+This project uses any OpenAI-compatible LLM provider. Save the following env vars with `save_env_var.sh`:
 
 ```
 LLM_API_KEY=your-api-key
@@ -401,7 +412,7 @@ After creating all files, display a summary:
 2. Show next steps:
    - Virtual environment was created and dependencies were installed in Init Step 5
    - Reactivate venv when needed: `source venv/bin/activate` (macOS/Linux) or `venv\Scripts\Activate.ps1` (Windows PowerShell)
-   - Configure credentials in `.greennode.json` or `.env`
+   - Configure credentials with the helper scripts in `.claude/skills/agentbase/scripts/` rather than editing secret files manually
    - For LangChain/LangGraph: set up LLM access with `/agentbase-llm` (list existing API keys or create one, browse models)
    - `python3 main.py`
 3. Mention that `/agentbase-deploy` can be used later to deploy to AgentBase Runtime

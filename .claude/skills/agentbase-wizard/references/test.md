@@ -267,15 +267,24 @@ Integration readiness check -- verifies that platform resources referenced in th
 
 #### Prerequisites
 
-Look for credentials in env vars `GREENNODE_CLIENT_ID` / `GREENNODE_CLIENT_SECRET` or `.greennode.json` in the **current working directory only** (do NOT search recursively or look outside the current directory). If credentials are not found, present the user with two options:
-1. **Auto create** -- run the "Automated IAM Service Account Setup" flow from the `/agentbase` skill (after confirming with the user)
-2. **I already have / create manually** -- user provides existing `client_id` and `client_secret`, or creates one manually at https://iam.console.vngcloud.vn/service-accounts
+Never read `.greennode.json` or `.env` directly. Check IAM credentials with:
 
-Do NOT proceed without letting the user choose.
+```bash
+bash .claude/skills/agentbase/scripts/check_credentials.sh iam
+```
+
+If credentials are not found, stop and follow the **"If Credentials Are Not Found"** section in `/agentbase` `references/auth-setup.md`. Do NOT improvise a separate credential flow here.
 
 #### Steps
 
-1. **Obtain IAM token**: See `/agentbase` reference skill for IAM authentication setup (client_id/client_secret → Bearer token flow).
+1. **Obtain IAM token** using the shared helper script:
+   ```bash
+   TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh)
+   ```
+   If a platform API returns 401, retry with:
+   ```bash
+   TOKEN=$(bash .claude/skills/agentbase/scripts/get_token.sh --force)
+   ```
 
 2. **Scan agent code** for SDK usage patterns. Check the entrypoint and imported modules for:
    - `agentbase-memory` SDK usage (e.g., `MemoryClient`, `AgentBaseMemoryEvents`; long-term memory uses `MemoryClient` tool-based approach)
