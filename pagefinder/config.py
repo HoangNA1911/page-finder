@@ -12,6 +12,15 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "")
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 
+# Embedding model (OpenAI-compatible). Defaults to the LLM endpoint/key so a single
+# credential can serve both. When the model/key/base url are not all present, the
+# service falls back to the deterministic cheap_embedding() so it still runs offline.
+EMBEDDING_MODEL = os.environ.get("PAGEFINDER_EMBEDDING_MODEL", "")
+EMBEDDING_BASE_URL = os.environ.get("PAGEFINDER_EMBEDDING_BASE_URL", LLM_BASE_URL)
+EMBEDDING_API_KEY = os.environ.get("PAGEFINDER_EMBEDDING_API_KEY", LLM_API_KEY)
+EMBEDDING_DIM = int(os.environ.get("PAGEFINDER_EMBEDDING_DIM", "1536"))
+EMBEDDING_BATCH_SIZE = int(os.environ.get("PAGEFINDER_EMBEDDING_BATCH_SIZE", "64"))
+
 SOURCE_MODE = os.environ.get("PAGEFINDER_SOURCE_MODE", "confluence").strip().lower()
 DOCS_DIR = Path(os.environ.get("PAGEFINDER_DOCS_DIR", "docs"))
 
@@ -34,7 +43,9 @@ MAX_RESULTS = int(os.environ.get("PAGEFINDER_MAX_RESULTS", "5"))
 CHUNK_MAX_CHARS = int(os.environ.get("PAGEFINDER_CHUNK_MAX_CHARS", "1200"))
 CHUNK_OVERLAP_PARAGRAPHS = int(os.environ.get("PAGEFINDER_CHUNK_OVERLAP_PARAGRAPHS", "1"))
 SEARCH_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_SEARCH_CANDIDATE_LIMIT", "25"))
-INDEX_SCHEMA_VERSION = 2
+VEC_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_VEC_CANDIDATE_LIMIT", "50"))
+FTS_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_FTS_CANDIDATE_LIMIT", "50"))
+INDEX_SCHEMA_VERSION = 3
 
 SEARCH_SYNONYMS = {
     "approval": ["approve", "approved", "approval flow", "duyet", "phe duyet"],

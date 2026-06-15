@@ -26,6 +26,8 @@ class PagefinderService:
             )
         self.markdown_client = MarkdownClient(config.DOCS_DIR)
         self.store = PagefinderStore(config.DB_PATH, config.INDEX_PATH)
+        self._embedder = None
+        self._embedder_ready = False
 
     def expand_query(self, query: str) -> list[str]:
         expansions = [query]
@@ -152,15 +154,62 @@ class PagefinderService:
 
         return chunks
 
-    def cheap_embedding(self, text: str, dimensions: int = 256) -> list[float]:
+    def cheap_embedding(self, text: str, dimensions: int = config.EMBEDDING_DIM) -> list[float]:
         vector = [0.0] * dimensions
         for token in tokenize(text):
             slot = int.from_bytes(hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest(), "big") % dimensions
             vector[slot] += 1.0
         return vector
 
+    def _get_embedder(self):
+        """Lazily build the OpenAI-compatible embedder, or None when unconfigured."""
+        if self._embedder_ready:
+            return self._embedder
+        self._embedder_ready = True
+        if config.EMBEDDING_MODEL and config.EMBEDDING_API_KEY and config.EMBEDDING_BASE_URL:
+            try:
+                from langchain_openai import OpenAIEmbeddings
+
+                self._embedder = OpenAIEmbeddings(
+                    model=config.EMBEDDING_MODEL,
+                    base_url=config.EMBEDDING_BASE_URL,
+                    api_key=config.EMBEDDING_API_KEY,
+                    dimensions=config.EMBEDDING_DIM,
+                    chunk_size=config.EMBEDDING_BATCH_SIZE,
+                )
+            except Exception as error:  # noqa: BLE001 - degrade gracefully to cheap_embedding
+                print(f"[pagefinder] embedding init failed, falling back to cheap_embedding: {error}")
+                self._embedder = None
+        return self._embedder
+
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        embedder = self._get_embedder()
+        if embedder is not None:
+            try:
+                vectors = embedder.embed_documents(list(texts))
+                if vectors and len(vectors[0]) == config.EMBEDDING_DIM:
+                    return vectors
+                print(
+                    f"[pagefinder] embedding dimension mismatch (got "
+                    f"{len(vectors[0]) if vectors else 0}, expected {config.EMBEDDING_DIM}); "
+                    "falling back to cheap_embedding"
+                )
+            except Exception as error:  # noqa: BLE001 - degrade gracefully
+                print(f"[pagefinder] embedding request failed, falling back to cheap_embedding: {error}")
         return [self.cheap_embedding(text) for text in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        embedder = self._get_embedder()
+        if embedder is not None:
+            try:
+                vector = embedder.embed_query(text)
+                if len(vector) == config.EMBEDDING_DIM:
+                    return vector
+            except Exception as error:  # noqa: BLE001 - degrade gracefully
+                print(f"[pagefinder] query embedding failed, falling back to cheap_embedding: {error}")
+        return self.cheap_embedding(text)
 
     @staticmethod
     def cosine_similarity(left: list[float], right: list[float]) -> float:
@@ -232,7 +281,7 @@ class PagefinderService:
             return synced_pages
 
     def ensure_index_ready(self) -> None:
-        if not self.store.all_pages():
+        if self.store.count_pages() == 0:
             self.sync_pages(force=True)
             return
         if config.AUTO_SYNC_ON_QUERY:
@@ -282,11 +331,17 @@ class PagefinderService:
             return 0.5
         return 0.0
 
-    def score_chunk(self, page: dict[str, Any], chunk: dict[str, Any], query: str, query_variants: list[str]) -> dict[str, float]:
+    def score_chunk(
+        self,
+        chunk: dict[str, Any],
+        query: str,
+        query_variants: list[str],
+        variant_vectors: list[list[float]],
+    ) -> dict[str, float]:
         query_tokens = tokenize(query)
-        semantic_score = max(self.cosine_similarity(self.cheap_embedding(variant), chunk["embedding"]) for variant in query_variants)
+        semantic_score = max(self.cosine_similarity(vector, chunk["embedding"]) for vector in variant_vectors)
 
-        normalized_title = page.get("normalized_title") or normalize_text(page["title"])
+        normalized_title = chunk.get("normalized_title") or normalize_text(chunk["title"])
         normalized_heading = chunk.get("normalized_heading") or normalize_text(chunk["heading"])
         normalized_text = chunk.get("normalized_text") or normalize_text(chunk["text"])
         title_tokens = set(normalized_title.split())
@@ -301,7 +356,7 @@ class PagefinderService:
         text_recall = self.lexical_recall_score(query_tokens, text_token_counts)
         text_density = self.lexical_density_score(query_tokens, text_token_counts)
         phrase_score = max(self.phrase_match_score(normalize_text(variant), normalized_text) for variant in query_variants)
-        page_id_boost = 1.0 if page["page_id"] in query else 0.0
+        page_id_boost = 1.0 if chunk["page_id"] in query else 0.0
         numeric_boost = self.numeric_token_boost(query_tokens, text_tokens | heading_tokens | title_tokens)
 
         keyword_score = (
@@ -347,27 +402,54 @@ class PagefinderService:
 
         return deduped
 
+    @staticmethod
+    def build_fts_query(query: str) -> str:
+        tokens = tokenize(query)
+        if not tokens:
+            return ""
+        # tokenize() already lowercases and strips punctuation, so every token is a
+        # bare word; quoting keeps FTS5 from interpreting any of them as operators.
+        return " OR ".join(f'"{token}"' for token in tokens)
+
+    def gather_candidate_rowids(self, query: str, variant_vectors: list[list[float]]) -> list[int]:
+        rowids: list[int] = []
+        seen: set[int] = set()
+        for vector in variant_vectors:
+            for rowid in self.store.knn_chunk_rowids(vector, config.VEC_CANDIDATE_LIMIT):
+                if rowid not in seen:
+                    seen.add(rowid)
+                    rowids.append(rowid)
+        for rowid in self.store.fts_chunk_rowids(self.build_fts_query(query), config.FTS_CANDIDATE_LIMIT):
+            if rowid not in seen:
+                seen.add(rowid)
+                rowids.append(rowid)
+        return rowids
+
     def search_chunks(self, query: str, limit: int) -> list[dict[str, Any]]:
         self.ensure_index_ready()
         query_variants = self.expand_query(query)
+        variant_vectors = [self.embed_query(variant) for variant in query_variants]
+
+        rowids = self.gather_candidate_rowids(query, variant_vectors)
+        candidates = self.store.get_chunks_for_rerank(rowids)
+
         matches: list[dict[str, Any]] = []
-        for page in self.store.all_pages():
-            for chunk in page.get("chunks", []):
-                scores = self.score_chunk(page, chunk, query, query_variants)
-                matches.append(
-                    {
-                        "score": scores["final"],
-                        "semantic_score": scores["semantic"],
-                        "keyword_score": scores["keyword"],
-                        "metadata_score": scores["metadata"],
-                        "page_id": page["page_id"],
-                        "title": page["title"],
-                        "url": page["url"],
-                        "heading": chunk["heading"],
-                        "text": chunk["text"],
-                        "token_count": chunk.get("token_count", 0),
-                    }
-                )
+        for chunk in candidates:
+            scores = self.score_chunk(chunk, query, query_variants, variant_vectors)
+            matches.append(
+                {
+                    "score": scores["final"],
+                    "semantic_score": scores["semantic"],
+                    "keyword_score": scores["keyword"],
+                    "metadata_score": scores["metadata"],
+                    "page_id": chunk["page_id"],
+                    "title": chunk["title"],
+                    "url": chunk["url"],
+                    "heading": chunk["heading"],
+                    "text": chunk["text"],
+                    "token_count": chunk.get("token_count", 0),
+                }
+            )
         matches.sort(
             key=lambda item: (
                 item["score"],
