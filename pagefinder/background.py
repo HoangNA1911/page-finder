@@ -13,7 +13,7 @@ class BackgroundSyncJob:
         self._start_lock = Lock()
 
     def should_run(self) -> bool:
-        return config.SOURCE_MODE == "confluence" and config.BACKGROUND_SYNC_ENABLED
+        return config.BACKGROUND_SYNC_ENABLED
 
     def start(self) -> None:
         if not self.should_run():

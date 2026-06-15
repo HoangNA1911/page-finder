@@ -1,7 +1,7 @@
 from starlette.responses import HTMLResponse
 
 
-CHATBOT_UI_HTML = """<!DOCTYPE html>
+CHATBOT_UI_HTML = r"""<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -193,6 +193,88 @@ CHATBOT_UI_HTML = """<!DOCTYPE html>
         border-bottom-left-radius: 8px;
       }
 
+      /* Rendered Markdown inside assistant bubbles */
+      .bubble.md {
+        white-space: normal;
+      }
+
+      .bubble.md > :first-child { margin-top: 0; }
+      .bubble.md > :last-child { margin-bottom: 0; }
+
+      .bubble.md p { margin: 0 0 10px; }
+
+      .bubble.md h1,
+      .bubble.md h2,
+      .bubble.md h3,
+      .bubble.md h4 {
+        margin: 14px 0 8px;
+        line-height: 1.3;
+      }
+
+      .bubble.md h1 { font-size: 1.18rem; }
+      .bubble.md h2 { font-size: 1.08rem; }
+      .bubble.md h3 { font-size: 1rem; }
+      .bubble.md h4 { font-size: 0.95rem; }
+
+      .bubble.md ul,
+      .bubble.md ol {
+        margin: 6px 0 10px;
+        padding-left: 22px;
+      }
+
+      .bubble.md li { margin: 3px 0; }
+
+      .bubble.md strong { color: #ffffff; }
+
+      .bubble.md a {
+        color: #7cc4ff;
+        text-decoration: underline;
+        word-break: break-all;
+      }
+
+      .bubble.md code {
+        background: rgba(2, 6, 23, 0.5);
+        padding: 1px 6px;
+        border-radius: 6px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.88em;
+      }
+
+      .bubble.md pre {
+        background: rgba(2, 6, 23, 0.55);
+        border: 1px solid var(--border);
+        padding: 12px 14px;
+        border-radius: 12px;
+        overflow-x: auto;
+        margin: 8px 0;
+      }
+
+      .bubble.md pre code {
+        background: transparent;
+        padding: 0;
+        font-size: 0.86em;
+      }
+
+      .bubble.md blockquote {
+        margin: 8px 0;
+        padding: 4px 12px;
+        border-left: 3px solid var(--accent);
+        color: var(--muted);
+      }
+
+      .bubble.md hr {
+        border: 0;
+        border-top: 1px solid var(--border);
+        margin: 12px 0;
+      }
+
+      .session-line {
+        margin-top: auto;
+        font-size: 0.76rem;
+        opacity: 0.65;
+        word-break: break-all;
+      }
+
       .composer-wrap {
         padding: 20px;
         border-top: 1px solid var(--border);
@@ -300,30 +382,21 @@ CHATBOT_UI_HTML = """<!DOCTYPE html>
         <div class="brand">
           <div class="brand-badge">P</div>
           <div>
-            <h1>Pagefinder Chat</h1>
-            <p class="meta">Simple AI chat UI for your document assistant, styled close to a modern ChatGPT-like workspace.</p>
+            <h1>Pagefinder</h1>
+            <p class="meta">Trợ lý hỏi đáp tài liệu Confluence.</p>
           </div>
         </div>
 
         <div class="meta-block">
-          <p class="hint">Try prompts</p>
+          <p class="hint">Gợi ý</p>
           <div class="pill-grid">
             <button class="pill" data-prompt="Tóm tắt tài liệu hiện có">Tóm tắt tài liệu</button>
-            <button class="pill" data-prompt="Tìm tài liệu nói về approval flow">Approval flow</button>
             <button class="pill" data-prompt="Có document nào vừa được update không?">Kiểm tra update</button>
             <button class="pill" data-prompt="Liệt kê các ghi chú tôi đã lưu">Ghi chú của tôi</button>
           </div>
         </div>
 
-        <div class="meta-block">
-          <p class="hint">Session</p>
-          <p class="meta" id="session-meta"></p>
-        </div>
-
-        <div class="meta-block">
-          <p class="hint">How it works</p>
-          <p class="meta">UI calls <code>/invocations</code> directly, keeps a local user/session id, and renders answers as a chat stream.</p>
-        </div>
+        <p class="meta session-line" id="session-meta"></p>
       </aside>
 
       <main class="chat">
@@ -388,6 +461,99 @@ CHATBOT_UI_HTML = """<!DOCTYPE html>
         seedMessages();
       }
 
+      function escapeHtml(value) {
+        return value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function renderInline(text) {
+        // `text` is already HTML-escaped. Protect inline code spans first.
+        const codes = [];
+        text = text.replace(/`([^`]+)`/g, function(_, code) {
+          codes.push(code);
+          return "{{{CODE" + (codes.length - 1) + "}}}";
+        });
+        // Markdown links [label](http...)
+        text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function(_, label, url) {
+          return '<a href="' + url.replace(/"/g, "%22") + '" target="_blank" rel="noopener">' + label + "</a>";
+        });
+        text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        text = text.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+        text = text.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+        // Auto-link bare URLs that are not already inside an href.
+        text = text.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, function(_, pre, url) {
+          return pre + '<a href="' + url.replace(/"/g, "%22") + '" target="_blank" rel="noopener">' + url + "</a>";
+        });
+        text = text.replace(/\{\{\{CODE(\d+)\}\}\}/g, function(_, index) {
+          return "<code>" + codes[+index] + "</code>";
+        });
+        return text;
+      }
+
+      function renderMarkdown(src) {
+        const lines = escapeHtml((src || "").replace(/\r\n/g, "\n")).split("\n");
+        let html = "";
+        let listType = null;
+        let para = [];
+
+        function flushPara() {
+          if (para.length) {
+            html += "<p>" + renderInline(para.join("<br>")) + "</p>";
+            para = [];
+          }
+        }
+        function closeList() {
+          if (listType) { html += "</" + listType + ">"; listType = null; }
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (/^\s*```/.test(line)) {
+            flushPara(); closeList();
+            const code = [];
+            i++;
+            while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
+            html += "<pre><code>" + code.join("\n") + "</code></pre>";
+            continue;
+          }
+          if (/^\s*$/.test(line)) { flushPara(); closeList(); continue; }
+          const heading = line.match(/^\s*(#{1,6})\s+(.*)$/);
+          if (heading) {
+            flushPara(); closeList();
+            const level = heading[1].length;
+            html += "<h" + level + ">" + renderInline(heading[2].trim()) + "</h" + level + ">";
+            continue;
+          }
+          if (/^\s*([-*_])\1\1+\s*$/.test(line)) { flushPara(); closeList(); html += "<hr>"; continue; }
+          const quote = line.match(/^\s*&gt;\s?(.*)$/);
+          if (quote) {
+            flushPara(); closeList();
+            html += "<blockquote>" + renderInline(quote[1]) + "</blockquote>";
+            continue;
+          }
+          const unordered = line.match(/^\s*[-*+]\s+(.*)$/);
+          if (unordered) {
+            flushPara();
+            if (listType !== "ul") { closeList(); html += "<ul>"; listType = "ul"; }
+            html += "<li>" + renderInline(unordered[1]) + "</li>";
+            continue;
+          }
+          const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+          if (ordered) {
+            flushPara();
+            if (listType !== "ol") { closeList(); html += "<ol>"; listType = "ol"; }
+            html += "<li>" + renderInline(ordered[1]) + "</li>";
+            continue;
+          }
+          closeList();
+          para.push(line.trim());
+        }
+        flushPara(); closeList();
+        return html;
+      }
+
       function addMessage(role, text) {
         const wrapper = document.createElement("div");
         wrapper.className = "message " + role;
@@ -398,7 +564,12 @@ CHATBOT_UI_HTML = """<!DOCTYPE html>
 
         const bubble = document.createElement("div");
         bubble.className = "bubble";
-        bubble.textContent = text;
+        if (role === "assistant") {
+          bubble.classList.add("md");
+          bubble.innerHTML = renderMarkdown(text);
+        } else {
+          bubble.textContent = text;
+        }
 
         wrapper.appendChild(label);
         wrapper.appendChild(bubble);
@@ -440,7 +611,7 @@ CHATBOT_UI_HTML = """<!DOCTYPE html>
           });
           const payload = await response.json();
           bubble.classList.remove("typing");
-          bubble.textContent = payload.response || payload.error || "No response returned.";
+          bubble.innerHTML = renderMarkdown(payload.response || payload.error || "No response returned.");
         } catch (error) {
           bubble.classList.remove("typing");
           bubble.textContent = "Could not reach /invocations. Check that the runtime is running and the API is accessible.";

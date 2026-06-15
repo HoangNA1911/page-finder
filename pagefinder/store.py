@@ -71,17 +71,6 @@ class PagefinderStore:
         try:
             connection.execute(
                 """
-                CREATE TABLE IF NOT EXISTS document_notes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    actor_id TEXT NOT NULL,
-                    page_id TEXT NOT NULL,
-                    note TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
                 CREATE TABLE IF NOT EXISTS reading_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     actor_id TEXT NOT NULL,
@@ -375,43 +364,6 @@ class PagefinderStore:
                     }
                 )
             return results
-        finally:
-            connection.close()
-
-    def add_note(self, actor_id: str, page_id: str, note: str) -> None:
-        connection = self._connect()
-        try:
-            connection.execute(
-                "INSERT INTO document_notes (actor_id, page_id, note, created_at) VALUES (?, ?, ?, ?)",
-                (actor_id, page_id, note, utc_now()),
-            )
-            connection.commit()
-        finally:
-            connection.close()
-
-    def list_notes(self, actor_id: str, page_id: str | None = None) -> list[sqlite3.Row]:
-        connection = self._connect()
-        try:
-            if page_id:
-                return connection.execute(
-                    """
-                    SELECT page_id, note, created_at
-                    FROM document_notes
-                    WHERE actor_id = ? AND page_id = ?
-                    ORDER BY created_at DESC
-                    """,
-                    (actor_id, page_id),
-                ).fetchall()
-            return connection.execute(
-                """
-                SELECT page_id, note, created_at
-                FROM document_notes
-                WHERE actor_id = ?
-                ORDER BY created_at DESC
-                LIMIT 20
-                """,
-                (actor_id,),
-            ).fetchall()
         finally:
             connection.close()
 

@@ -32,6 +32,20 @@ def get_actor_id() -> str:
     return get_configurable().get("actor_id", "shared-user")
 
 
+def build_note_namespace(actor_id: str) -> str:
+    """Dedicated long-term-memory namespace for per-user document notes."""
+    return f"{build_namespace(config.MEMORY_STRATEGY_ID, actor_id)}/notes"
+
+
+def _memory_records(result) -> list:
+    """Normalize the SDK response (a bare list or a paginated wrapper) to a list."""
+    if result is None:
+        return []
+    if hasattr(result, "list_data"):
+        return result.list_data or []
+    return list(result)
+
+
 @tool
 def remember(fact: str) -> str:
     """Store a user preference or fact for later conversations."""
@@ -125,23 +139,36 @@ def read_document(page_id: str, focus: str = "") -> str:
 
 @tool
 def add_document_note(page_id: str, note: str) -> str:
-    """Save a personal note for a specific document page."""
+    """Save a personal note for a specific document page (stored in AgentBase long-term memory)."""
+    if not config.ENABLE_AGENTBASE_MEMORY or memory_client is None:
+        return "AgentBase Memory is disabled in this deployment; cannot save notes."
     actor_id = get_actor_id()
     page = service.store.get_page(page_id)
     if not page:
         return f"Page {page_id} is not indexed yet. Sync or read it first."
-    service.store.add_note(actor_id, page_id, note)
+    namespace = build_note_namespace(actor_id)
+    record = f"page_id={page_id} | title={page['title']} | {note}"
+    memory_client.insert_memory_records_directly(id=config.MEMORY_ID, namespace=namespace, request=[record])
     return f"Saved note for {page['title']} (page_id={page_id})."
 
 
 @tool
 def list_document_notes(page_id: str = "") -> str:
-    """List saved personal notes, optionally filtered to one document page."""
+    """List saved personal notes, optionally filtered to one document page (from AgentBase memory)."""
+    if not config.ENABLE_AGENTBASE_MEMORY or memory_client is None:
+        return "AgentBase Memory is disabled in this deployment; cannot list notes."
     actor_id = get_actor_id()
-    rows = service.store.list_notes(actor_id, page_id or None)
-    if not rows:
+    namespace = build_note_namespace(actor_id)
+    records = _memory_records(memory_client.list_memory_records(id=config.MEMORY_ID, namespace=namespace))
+    prefix = f"page_id={page_id} |" if page_id else ""
+    lines = [
+        f"- {row.memory}"
+        for row in records
+        if row.memory and (not prefix or row.memory.startswith(prefix))
+    ]
+    if not lines:
         return "No saved document notes found."
-    return "\n".join(f"- page_id={row['page_id']} at {row['created_at']}: {row['note']}" for row in rows)
+    return "\n".join(lines)
 
 
 @tool

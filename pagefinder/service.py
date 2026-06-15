@@ -1,7 +1,6 @@
 import hashlib
 import math
 from collections import Counter
-from html import escape
 from threading import Lock
 from typing import Any
 
@@ -9,22 +8,19 @@ import requests
 from bs4 import BeautifulSoup
 
 from pagefinder import config
-from pagefinder.sources import ConfluenceClient, MarkdownClient, PageSnapshot
+from pagefinder.sources import ConfluenceClient, PageSnapshot
 from pagefinder.store import PagefinderStore
-from pagefinder.utils import collapse_whitespace, normalize_text, tokenize
+from pagefinder.utils import collapse_whitespace, normalize_text, tokenize, utc_now
 
 
 class PagefinderService:
     def __init__(self) -> None:
         self.sync_lock = Lock()
-        self.confluence_client = None
-        if config.SOURCE_MODE == "confluence":
-            self.confluence_client = ConfluenceClient(
-                base_url=config.CONFLUENCE_BASE_URL,
-                email=config.CONFLUENCE_EMAIL,
-                api_token=config.CONFLUENCE_API_TOKEN,
-            )
-        self.markdown_client = MarkdownClient(config.DOCS_DIR)
+        self.confluence_client = ConfluenceClient(
+            base_url=config.CONFLUENCE_BASE_URL,
+            email=config.CONFLUENCE_EMAIL,
+            api_token=config.CONFLUENCE_API_TOKEN,
+        )
         self.store = PagefinderStore(config.DB_PATH, config.INDEX_PATH)
         self._embedder = None
         self._embedder_ready = False
@@ -55,38 +51,6 @@ class PagefinderService:
                 unique_expansions.append(item)
         return unique_expansions
 
-    def markdown_to_html(self, markdown_text: str) -> str:
-        html_lines: list[str] = []
-        list_open = False
-        for raw_line in markdown_text.splitlines():
-            line = raw_line.strip()
-            if not line:
-                if list_open:
-                    html_lines.append("</ul>")
-                    list_open = False
-                continue
-            if line.startswith("#"):
-                if list_open:
-                    html_lines.append("</ul>")
-                    list_open = False
-                level = min(len(line) - len(line.lstrip("#")), 6)
-                text = escape(line[level:].strip())
-                html_lines.append(f"<h{level}>{text}</h{level}>")
-                continue
-            if line.startswith("- ") or line.startswith("* "):
-                if not list_open:
-                    html_lines.append("<ul>")
-                    list_open = True
-                html_lines.append(f"<li>{escape(line[2:].strip())}</li>")
-                continue
-            if list_open:
-                html_lines.append("</ul>")
-                list_open = False
-            html_lines.append(f"<p>{escape(line)}</p>")
-        if list_open:
-            html_lines.append("</ul>")
-        return "\n".join(html_lines)
-
     def extract_sections(self, html: str) -> list[tuple[str, str]]:
         soup = BeautifulSoup(html, "html.parser")
         sections: list[tuple[str, str]] = []
@@ -111,8 +75,7 @@ class PagefinderService:
 
     def chunk_sections(self, page: PageSnapshot, max_chars: int = config.CHUNK_MAX_CHARS) -> list[dict[str, Any]]:
         chunks: list[dict[str, Any]] = []
-        page_html = page.body if page.body_format == "html" else self.markdown_to_html(page.body)
-        sections = self.extract_sections(page_html)
+        sections = self.extract_sections(page.body)
 
         for section_index, (heading, body) in enumerate(sections, start=1):
             paragraphs = [part.strip() for part in body.split("\n") if part.strip()]
@@ -242,29 +205,30 @@ class PagefinderService:
             "chunks": chunks,
         }
 
+    @staticmethod
+    def _log_index(message: str) -> None:
+        print(f"[{utc_now()}] [pagefinder.index] {message}", flush=True)
+
+    def target_page_ids(self) -> list[str]:
+        """The pages to index: explicit CONFLUENCE_PAGE_IDS unioned with every page
+        discovered in CONFLUENCE_SPACE_KEYS (when configured)."""
+        page_ids = list(config.CONFLUENCE_PAGE_IDS)
+        if config.CONFLUENCE_SPACE_KEYS:
+            for page_id in self.confluence_client.list_page_ids(config.CONFLUENCE_SPACE_KEYS):
+                if page_id not in page_ids:
+                    page_ids.append(page_id)
+        return page_ids
+
     def sync_pages(self, force: bool = False) -> list[dict[str, Any]]:
         with self.sync_lock:
             synced_pages: list[dict[str, Any]] = []
-            if config.SOURCE_MODE == "markdown":
-                active_page_ids: set[str] = set()
-                for snapshot in self.markdown_client.iter_pages():
-                    active_page_ids.add(snapshot.page_id)
-                    stored_page = self.store.get_page(snapshot.page_id)
-                    needs_reindex = (
-                        force
-                        or not stored_page
-                        or stored_page.get("version") != snapshot.version
-                        or stored_page.get("index_schema_version") != config.INDEX_SCHEMA_VERSION
-                    )
-                    if needs_reindex:
-                        page_payload = self.reindex_page(snapshot)
-                        self.store.upsert_page(page_payload)
-                        synced_pages.append(page_payload)
-                self.store.prune_pages(active_page_ids, config.SOURCE_MODE)
-                return synced_pages
-
-            active_page_ids = set(config.CONFLUENCE_PAGE_IDS)
-            for page_id in config.CONFLUENCE_PAGE_IDS:
+            page_ids = self.target_page_ids()
+            active_page_ids = set(page_ids)
+            mode = "discovery" if config.CONFLUENCE_SPACE_KEYS else "manual"
+            self._log_index(
+                f"Sync started (force={force}, mode={mode}) for {len(active_page_ids)} page(s)."
+            )
+            for page_id in page_ids:
                 stored_page = self.store.get_page(page_id)
                 snapshot = self.confluence_client.fetch_page(page_id)
                 needs_reindex = (
@@ -273,11 +237,25 @@ class PagefinderService:
                     or stored_page.get("version") != snapshot.version
                     or stored_page.get("index_schema_version") != config.INDEX_SCHEMA_VERSION
                 )
-                if needs_reindex:
-                    page_payload = self.reindex_page(snapshot)
-                    self.store.upsert_page(page_payload)
-                    synced_pages.append(page_payload)
+                if not needs_reindex:
+                    self._log_index(
+                        f"Skipped page_id={page_id} title='{snapshot.title}' "
+                        f"(already at version={snapshot.version})."
+                    )
+                    continue
+                reason = "forced" if force else ("new" if not stored_page else "version-changed")
+                page_payload = self.reindex_page(snapshot)
+                self.store.upsert_page(page_payload)
+                synced_pages.append(page_payload)
+                self._log_index(
+                    f"Indexed page_id={page_id} title='{snapshot.title}' version={snapshot.version} "
+                    f"chunks={len(page_payload['chunks'])} reason={reason}."
+                )
             self.store.prune_pages(active_page_ids, config.SOURCE_MODE)
+            self._log_index(
+                f"Sync finished: {len(synced_pages)} page(s) reindexed, "
+                f"{len(active_page_ids)} page(s) in scope."
+            )
             return synced_pages
 
     def ensure_index_ready(self) -> None:
@@ -499,20 +477,7 @@ class PagefinderService:
 
     def check_document_updates_impl(self) -> str:
         updates: list[str] = []
-        if config.SOURCE_MODE == "markdown":
-            for snapshot in self.markdown_client.iter_pages():
-                indexed_page = self.store.get_page(snapshot.page_id)
-                if not indexed_page:
-                    updates.append(f"- {snapshot.title} is not indexed yet.")
-                    continue
-                indexed_version = indexed_page.get("version")
-                if indexed_version != snapshot.version:
-                    updates.append(f"- {snapshot.title} changed from version {indexed_version} to {snapshot.version}.")
-            if not updates:
-                return "No updates detected for the configured Markdown documents."
-            return "\n".join(updates)
-
-        for page_id in config.CONFLUENCE_PAGE_IDS:
+        for page_id in self.target_page_ids():
             current_snapshot = self.confluence_client.fetch_page(page_id)
             indexed_page = self.store.get_page(page_id)
             if not indexed_page:

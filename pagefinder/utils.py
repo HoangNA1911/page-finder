@@ -1,6 +1,5 @@
 import re
 from datetime import datetime, timezone
-from pathlib import Path
 
 
 def utc_now() -> str:
@@ -34,11 +33,3 @@ def looks_like_summary_request(message: str) -> bool:
     lowered = message.lower()
     keywords = ["tóm tắt", "tom tat", "summary", "nội dung", "noi dung"]
     return any(keyword in lowered for keyword in keywords)
-
-
-def title_from_markdown(path: Path) -> str:
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            return stripped[2:].strip()
-    return path.stem.replace("-", " ").title()

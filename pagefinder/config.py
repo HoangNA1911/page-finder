@@ -21,8 +21,8 @@ EMBEDDING_API_KEY = os.environ.get("PAGEFINDER_EMBEDDING_API_KEY", LLM_API_KEY)
 EMBEDDING_DIM = int(os.environ.get("PAGEFINDER_EMBEDDING_DIM", "1536"))
 EMBEDDING_BATCH_SIZE = int(os.environ.get("PAGEFINDER_EMBEDDING_BATCH_SIZE", "64"))
 
-SOURCE_MODE = os.environ.get("PAGEFINDER_SOURCE_MODE", "confluence").strip().lower()
-DOCS_DIR = Path(os.environ.get("PAGEFINDER_DOCS_DIR", "docs"))
+# Confluence is the only supported source. The local Markdown mode has been removed.
+SOURCE_MODE = "confluence"
 
 CONFLUENCE_BASE_URL = os.environ.get("CONFLUENCE_BASE_URL", "")
 CONFLUENCE_EMAIL = os.environ.get("CONFLUENCE_EMAIL", "")
@@ -31,6 +31,14 @@ CONFLUENCE_PAGE_IDS = [
     page_id.strip()
     for page_id in os.environ.get("CONFLUENCE_PAGE_IDS", "").split(",")
     if page_id.strip()
+]
+# Optional auto-discovery: index every page in these space keys (comma-separated).
+# When set, the target page set is discovered each sync (union with CONFLUENCE_PAGE_IDS),
+# so new pages are picked up and deleted pages are pruned automatically.
+CONFLUENCE_SPACE_KEYS = [
+    space_key.strip()
+    for space_key in os.environ.get("CONFLUENCE_SPACE_KEYS", "").split(",")
+    if space_key.strip()
 ]
 
 DATA_DIR = Path(os.environ.get("PAGEFINDER_DATA_DIR", ".pagefinder"))
@@ -45,7 +53,7 @@ CHUNK_OVERLAP_PARAGRAPHS = int(os.environ.get("PAGEFINDER_CHUNK_OVERLAP_PARAGRAP
 SEARCH_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_SEARCH_CANDIDATE_LIMIT", "25"))
 VEC_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_VEC_CANDIDATE_LIMIT", "50"))
 FTS_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_FTS_CANDIDATE_LIMIT", "50"))
-INDEX_SCHEMA_VERSION = 3
+INDEX_SCHEMA_VERSION = 4
 
 SEARCH_SYNONYMS = {
     "approval": ["approve", "approved", "approval flow", "duyet", "phe duyet"],
@@ -71,24 +79,19 @@ def validate_config() -> None:
     }
     if ENABLE_AGENTBASE_MEMORY:
         required_env_vars["MEMORY_ID"] = MEMORY_ID
-    if SOURCE_MODE == "confluence":
-        required_env_vars.update(
-            {
-                "CONFLUENCE_BASE_URL": CONFLUENCE_BASE_URL,
-                "CONFLUENCE_EMAIL": CONFLUENCE_EMAIL,
-                "CONFLUENCE_API_TOKEN": CONFLUENCE_API_TOKEN,
-            }
-        )
+    required_env_vars.update(
+        {
+            "CONFLUENCE_BASE_URL": CONFLUENCE_BASE_URL,
+            "CONFLUENCE_EMAIL": CONFLUENCE_EMAIL,
+            "CONFLUENCE_API_TOKEN": CONFLUENCE_API_TOKEN,
+        }
+    )
 
     missing_env_vars = [name for name, value in required_env_vars.items() if not value]
     if missing_env_vars:
         raise ValueError("Missing required environment variables: " + ", ".join(sorted(missing_env_vars)))
-    if SOURCE_MODE not in {"markdown", "confluence"}:
-        raise ValueError("PAGEFINDER_SOURCE_MODE must be either 'markdown' or 'confluence'")
-    if SOURCE_MODE == "confluence" and not CONFLUENCE_PAGE_IDS:
-        raise ValueError("CONFLUENCE_PAGE_IDS must contain at least one page id")
-    if SOURCE_MODE == "markdown" and not DOCS_DIR.exists():
-        raise ValueError(f"PAGEFINDER_DOCS_DIR does not exist: {DOCS_DIR}")
+    if not CONFLUENCE_PAGE_IDS and not CONFLUENCE_SPACE_KEYS:
+        raise ValueError("Set CONFLUENCE_PAGE_IDS (explicit pages) or CONFLUENCE_SPACE_KEYS (index whole spaces)")
     if BACKGROUND_SYNC_INTERVAL_SECONDS <= 0:
         raise ValueError("PAGEFINDER_BACKGROUND_SYNC_INTERVAL_SECONDS must be greater than 0")
 

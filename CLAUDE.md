@@ -10,32 +10,34 @@ pip install -r requirements.txt
 python main.py         # starts on port 8080
 ```
 
-For Markdown mode (no Confluence), set `PAGEFINDER_SOURCE_MODE=markdown` and point `PAGEFINDER_DOCS_DIR` to a directory of `.md` files.
+Confluence is the only document source. (The former local Markdown mode has been removed.)
 
 ## Architecture
 
-Pagefinder is a RAG chat agent: a LangChain/LangGraph agent with tools that search over a locally-indexed corpus of Confluence pages or Markdown files.
+Pagefinder is a RAG chat agent: a LangChain/LangGraph agent with tools that search over a locally-indexed corpus of Confluence pages.
 
 ```
 HTTP /invocations
     → runtime.py   (GreenNodeAgentBaseApp + LangGraph agent)
     → service.py   (PagefinderService: search, indexing, sync)
-    → store.py     (PagefinderStore: JSON index + SQLite)
-    → sources.py   (ConfluenceClient / MarkdownClient)
+    → store.py     (PagefinderStore: SQLite index)
+    → sources.py   (ConfluenceClient)
 ```
 
 **`runtime.py`** — Wires the agent. Registers tools (`search_documents`, `read_document`, notes/history tools, optional memory tools), extracts `actor_id`/`thread_id` from the request, and runs the LangGraph agent. Short-circuits directly to `read_document_impl` if the request already specifies a `page_id`.
 
 **`service.py`** — The core logic. Three main responsibilities:
-1. **Indexing** (`sync_pages` → `reindex_page`): fetches pages, splits into chunks by heading/paragraph with overlap, computes embeddings, writes to the store.
+1. **Indexing** (`sync_pages` → `reindex_page`): fetches pages, splits into chunks by heading/paragraph with overlap, computes embeddings, writes to the store. Each indexing run logs per page (`[pagefinder.index] ...`: sync start, indexed/skipped per page with chunk count, sync finished).
 2. **Search** (`search_chunks`): expands the query via synonyms, scores every chunk with hybrid scoring, deduplicates, returns top N.
 3. **Hybrid scoring** (`score_chunk`): three weighted components — *semantic* (42%, cosine on cheap embeddings), *keyword* (38%, lexical overlap/recall/density), *metadata* (20%, title/heading/phrase/numeric boost).
 
-**`store.py`** — Two separate stores in `.pagefinder/`:
-- `index.json` — all pages and their chunks (including embeddings), loaded into memory on each access.
-- `pagefinder.db` (SQLite) — per-user `document_notes` and `reading_history` only.
+**`store.py`** — SQLite store in `.pagefinder/pagefinder.db`:
+- `pages` + `chunks` (chunk text/metadata) + `vec_chunks` (sqlite-vec KNN) + `chunks_fts` (FTS5), all sharing the same `rowid`, hold the searchable index.
+- `reading_history` holds per-user read history. **Per-user document notes are no longer stored here** — they live in AgentBase long-term memory (see `runtime.py`).
 
-**`background.py`** — Daemon thread (Confluence mode only) that calls `sync_pages(force=False)` every `BACKGROUND_SYNC_INTERVAL_SECONDS`. Version metadata from Confluence determines whether a page needs reindexing.
+**`runtime.py` notes** — `add_document_note` / `list_document_notes` persist notes in AgentBase Memory under the namespace `…/actors/{actor_id}/notes` (record text `page_id=… | title=… | <note>`). Both require `PAGEFINDER_ENABLE_AGENTBASE_MEMORY=true`; they return a disabled message otherwise.
+
+**`background.py`** — Daemon thread that calls `sync_pages(force=False)` every `BACKGROUND_SYNC_INTERVAL_SECONDS` (gated only by `PAGEFINDER_BACKGROUND_SYNC_ENABLED`). Version metadata from Confluence determines whether a page needs reindexing.
 
 ## Embedding and Search
 
