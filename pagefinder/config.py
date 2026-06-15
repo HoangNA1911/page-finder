@@ -44,7 +44,7 @@ CONFLUENCE_SPACE_KEYS = [
 DATA_DIR = Path(os.environ.get("PAGEFINDER_DATA_DIR", ".pagefinder"))
 INDEX_PATH = DATA_DIR / "index.json"
 DB_PATH = DATA_DIR / "pagefinder.db"
-AUTO_SYNC_ON_QUERY = os.environ.get("PAGEFINDER_AUTO_SYNC_ON_QUERY", "true").lower() == "true"
+AUTO_SYNC_ON_QUERY = os.environ.get("PAGEFINDER_AUTO_SYNC_ON_QUERY", "false").lower() == "true"
 BACKGROUND_SYNC_ENABLED = os.environ.get("PAGEFINDER_BACKGROUND_SYNC_ENABLED", "true").lower() == "true"
 BACKGROUND_SYNC_INTERVAL_SECONDS = int(os.environ.get("PAGEFINDER_BACKGROUND_SYNC_INTERVAL_SECONDS", "300"))
 MAX_RESULTS = int(os.environ.get("PAGEFINDER_MAX_RESULTS", "5"))
