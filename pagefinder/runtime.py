@@ -209,19 +209,30 @@ def list_recent_reads(limit: int = 10) -> str:
 
 @tool
 def list_documents() -> str:
-    """List every document currently in the indexed set (title + page_id).
+    """List every document currently in the indexed set as clickable title links.
 
     Use this when the user asks to list / show / enumerate the available documents
     WITHOUT giving a search keyword (e.g. "list all documents", "what docs do you have").
+    Returns a ready-to-display markdown bullet list of linked titles — present it as-is.
     """
     try:
-        rows = service.store.list_pages()
+        total = service.store.count_pages()
+        rows = service.store.list_pages(limit=60)
     except Exception as error:
         return service.format_source_error(error)
     if not rows:
         return "No documents are indexed yet. Ask me to index/sync the Confluence pages first."
-    lines = [f"- {row['title']} (page_id={row['page_id']})" for row in rows]
-    return f"{len(rows)} indexed document(s):\n" + "\n".join(lines)
+    # Square brackets in a title break markdown link syntax ([label](url)); swap them.
+    lines = [
+        f"- [{row['title'].replace('[', '(').replace(']', ')')}]({row['url']})"
+        for row in rows
+    ]
+    header = (
+        f"{total} indexed documents (showing first {len(rows)}):"
+        if total > len(rows)
+        else f"{total} indexed document(s):"
+    )
+    return header + "\n" + "\n".join(lines)
 
 
 agent = create_agent(
@@ -245,9 +256,9 @@ agent = create_agent(
         "When the user asks about document content, use search_documents first and cite the page title as a markdown "
         "link to its URL. "
         "When the user asks to list/show all available documents without a search keyword, use list_documents and "
-        "present the actual document titles returned by the tool. Do NOT collapse them into invented topic categories "
-        "or claim what the corpus is 'mostly about' — just list the real titles (you may show the first ~30 and note "
-        "the total count if there are many). "
+        "present its output AS-IS: a simple markdown bullet list of clickable titles. Do NOT build a table, do NOT add "
+        "a Page ID column, do NOT split into invented topic categories, and do NOT claim what the corpus is 'mostly "
+        "about'. Show the first ~30 linked titles and note the total count if there are many. "
         "NEVER show page_id values to the user — they are internal identifiers only. Use page_id internally to call "
         "tools, but in your answer reference documents by their title (linked to the URL) instead. "
         "When the user asks to inspect one document in depth, use read_document. "

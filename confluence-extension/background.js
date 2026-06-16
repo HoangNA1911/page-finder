@@ -7,8 +7,19 @@
 const ENDPOINT =
   "https://endpoint-a469d99f-1eda-4c3a-8453-6beeb52a7bf1.agentbase-runtime.aiplatform.vngcloud.vn";
 
+// Active requests keyed by id, so the content script can cancel an in-flight call.
+const controllers = {};
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg && msg.type === "pagefinder:abort") {
+    const controller = controllers[msg.id];
+    if (controller) controller.abort();
+    return false;
+  }
   if (!msg || msg.type !== "pagefinder:invoke") return false;
+
+  const controller = new AbortController();
+  controllers[msg.id] = controller;
 
   (async () => {
     try {
@@ -21,6 +32,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           "X-GreenNode-AgentBase-Session-Id": msg.sessionId,
         },
         body: JSON.stringify({ message: msg.message }),
+        signal: controller.signal,
       });
 
       // The endpoint always returns HTTP 200 and signals failure in the JSON body.
@@ -35,7 +47,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
       sendResponse({ ok: true, response: data.response || "" });
     } catch (err) {
-      sendResponse({ ok: false, error: "Couldn't reach the agent: " + (err && err.message ? err.message : String(err)) });
+      if (err && err.name === "AbortError") {
+        sendResponse({ ok: false, aborted: true });
+      } else {
+        sendResponse({ ok: false, error: "Couldn't reach the agent: " + (err && err.message ? err.message : String(err)) });
+      }
+    } finally {
+      delete controllers[msg.id];
     }
   })();
 

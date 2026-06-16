@@ -104,7 +104,7 @@
       border: 3px solid transparent; background-clip: padding-box;
     }
 
-    .pf-msg { max-width: 86%; display: flex; flex-direction: column; gap: 5px; }
+    .pf-msg { max-width: 80%; display: flex; flex-direction: column; gap: 5px; }
     .pf-msg.user { align-self: flex-end; }
     .pf-msg.assistant { align-self: flex-start; }
     .pf-label {
@@ -209,6 +209,8 @@
     }
     .pf-send:hover:not(:disabled) { background: var(--accent-hover); }
     .pf-send:disabled { opacity: 0.5; cursor: not-allowed; }
+    .pf-send.pf-stop { background: #64748b; }
+    .pf-send.pf-stop:hover { background: #515e72; }
   `;
 
   // ---------------------------------------------------------------------------
@@ -425,10 +427,26 @@
   }
 
   let busy = false;
+  let pendingReqId = null;
+  let pendingBubble = null;
+
   function setBusy(b) {
     busy = b;
-    sendEl.disabled = b;
+    inputEl.disabled = b;
+    // Keep the button clickable while busy so it can cancel.
+    sendEl.textContent = b ? "Stop" : "Send";
+    sendEl.classList.toggle("pf-stop", b);
     statusEl.textContent = b ? "Thinking" : "Ready";
+  }
+
+  function cancelPending() {
+    if (!pendingReqId) return;
+    chrome.runtime.sendMessage({ type: "pagefinder:abort", id: pendingReqId });
+    if (pendingBubble) (pendingBubble.closest(".pf-msg") || pendingBubble).remove();
+    pendingReqId = null;
+    pendingBubble = null;
+    setBusy(false);
+    inputEl.focus();
   }
 
   async function send(message, displayLabel) {
@@ -442,14 +460,22 @@
     inputEl.style.height = "40px";
     setBusy(true);
 
+    const reqId = "r" + Date.now() + Math.random().toString(16).slice(2, 8);
+    pendingReqId = reqId;
     const bubble = addMessage("assistant", "", false);
     bubble.innerHTML = '<span class="pf-dot-typing"><span></span><span></span><span></span></span>';
+    pendingBubble = bubble;
 
     chrome.runtime.sendMessage(
-      { type: "pagefinder:invoke", message: trimmed, userId: id.userId, sessionId: id.sessionId },
+      { type: "pagefinder:invoke", id: reqId, message: trimmed, userId: id.userId, sessionId: id.sessionId },
       function (resp) {
+        if (pendingReqId !== reqId) return; // cancelled or superseded
+        pendingReqId = null;
+        pendingBubble = null;
         if (chrome.runtime.lastError) {
           bubble.textContent = "Extension connection error: " + chrome.runtime.lastError.message;
+        } else if (resp && resp.aborted) {
+          (bubble.closest(".pf-msg") || bubble).remove();
         } else if (!resp || !resp.ok) {
           bubble.textContent = (resp && resp.error) || "No response received.";
         } else {
@@ -503,7 +529,10 @@
   });
   closeEl.addEventListener("click", function () { panel.classList.remove("open"); });
   suggestToggleEl.addEventListener("click", function () { suggestEl.classList.toggle("collapsed"); });
-  sendEl.addEventListener("click", function () { send(inputEl.value); });
+  sendEl.addEventListener("click", function () {
+    if (busy) { cancelPending(); return; }
+    send(inputEl.value);
+  });
   inputEl.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(inputEl.value); }
   });

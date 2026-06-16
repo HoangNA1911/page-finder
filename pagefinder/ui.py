@@ -193,6 +193,34 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         border: 1px solid var(--border);
       }
 
+      .cap-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 11px;
+      }
+      .cap-list li {
+        display: flex;
+        gap: 9px;
+        align-items: flex-start;
+        font-size: 0.86rem;
+        line-height: 1.4;
+        color: var(--text);
+      }
+      .cap-list li span {
+        flex: none;
+        font-size: 1rem;
+        line-height: 1.3;
+      }
+
+      .sidebar-foot {
+        margin-top: auto;
+        font-size: 0.78rem;
+        opacity: 0.85;
+      }
+
       .hint {
         text-transform: uppercase;
         letter-spacing: 0.14em;
@@ -422,8 +450,8 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
       textarea {
         width: 100%;
         resize: none;
-        min-height: 84px;
-        max-height: 220px;
+        min-height: 46px;
+        max-height: 200px;
         border: 0;
         outline: 0;
         background: transparent;
@@ -470,6 +498,12 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         cursor: not-allowed;
         opacity: 0.4;
       }
+
+      .send.stop {
+        background: #64748b;
+        color: #fff;
+      }
+      .send.stop:hover { background: #515e72; }
 
       .messages::-webkit-scrollbar {
         width: 10px;
@@ -631,18 +665,31 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
           <div class="brand-badge" aria-label="Pagefinder">P</div>
           <div>
             <h1>Pagefinder</h1>
-            <p class="meta">Trợ lý hỏi đáp tài liệu Confluence.</p>
+            <p class="meta">Trợ lý hỏi đáp tài liệu Confluence</p>
           </div>
         </div>
 
         <div class="meta-block">
           <p class="hint">Gợi ý</p>
           <div class="pill-grid">
+            <button class="pill" data-prompt="Liệt kê tất cả tài liệu hiện có">Tất cả tài liệu</button>
             <button class="pill" data-prompt="Tóm tắt tài liệu hiện có">Tóm tắt tài liệu</button>
             <button class="pill" data-prompt="Có document nào vừa được update không?">Kiểm tra update</button>
             <button class="pill" data-prompt="Liệt kê các ghi chú tôi đã lưu">Ghi chú của tôi</button>
           </div>
         </div>
+
+        <div class="meta-block">
+          <p class="hint">Mình giúp được gì</p>
+          <ul class="cap-list">
+            <li><span>🔍</span> Tìm kiếm trong tài liệu đã index</li>
+            <li><span>📄</span> Tóm gọn nhanh một trang dài</li>
+            <li><span>🔔</span> Cho biết tài liệu nào vừa cập nhật</li>
+            <li><span>📝</span> Lưu &amp; xem lại ghi chú cá nhân</li>
+          </ul>
+        </div>
+
+        <p class="meta sidebar-foot">Gõ câu hỏi bên phải, hoặc bấm một gợi ý để bắt đầu.</p>
 
       </aside>
 
@@ -652,7 +699,7 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         <div class="chat-header">
           <div>
             <h2>Chat with your docs</h2>
-            <p class="meta">Ask about indexed Confluence pages, updates, notes, or summaries.</p>
+            <p class="meta">Ask about indexed Confluence pages, updates, notes, or summaries</p>
           </div>
           <div class="header-actions">
             <button class="icon-btn" id="theme-toggle" type="button" aria-label="Đổi giao diện sáng/tối" title="Sáng / Tối">
@@ -863,11 +910,30 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         return bubble;
       }
 
+      let pendingController = null;
+      const sentHistory = [];
+      let histPos = -1; // -1 = not navigating history
+
+      function setPromptValue(value) {
+        promptEl.value = value;
+        promptEl.style.height = "46px";
+        promptEl.style.height = Math.min(promptEl.scrollHeight, 200) + "px";
+        const end = value.length;
+        promptEl.setSelectionRange(end, end);
+      }
+
       function setBusy(isBusy) {
-        sendEl.disabled = isBusy;
         promptEl.disabled = isBusy;
+        // Keep the button clickable while busy so it can cancel the request.
+        sendEl.disabled = false;
+        sendEl.textContent = isBusy ? "Stop" : "Send";
+        sendEl.classList.toggle("stop", isBusy);
         statusEl.textContent = isBusy ? "Thinking" : "Ready";
         statusEl.classList.toggle("typing", isBusy);
+      }
+
+      function cancelPending() {
+        if (pendingController) pendingController.abort();
       }
 
       async function sendPrompt(message) {
@@ -876,14 +942,18 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
 
         const identity = ensureIdentity();
         addMessage("user", trimmed);
+        if (sentHistory[sentHistory.length - 1] !== trimmed) sentHistory.push(trimmed);
+        histPos = -1;
         promptEl.value = "";
-        promptEl.style.height = "84px";
+        promptEl.style.height = "46px";
         setBusy(true);
 
         const bubble = addMessage("assistant", "");
         bubble.classList.add("loading");
         bubble.innerHTML = '<span class="dot-typing"><span></span><span></span><span></span></span>';
 
+        const controller = new AbortController();
+        pendingController = controller;
         try {
           const response = await fetch("/invocations", {
             method: "POST",
@@ -893,14 +963,20 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
               "X-GreenNode-AgentBase-Session-Id": identity.sessionId,
             },
             body: JSON.stringify({ message: trimmed }),
+            signal: controller.signal,
           });
           const payload = await response.json();
           bubble.classList.remove("loading");
           bubble.innerHTML = renderMarkdown(payload.response || payload.error || "No response returned.");
         } catch (error) {
-          bubble.classList.remove("loading");
-          bubble.textContent = "Could not reach /invocations. Check that the runtime is running and the API is accessible.";
+          if (error.name === "AbortError") {
+            (bubble.closest(".message") || bubble).remove();
+          } else {
+            bubble.classList.remove("loading");
+            bubble.textContent = "Could not reach /invocations. Check that the runtime is running and the API is accessible.";
+          }
         } finally {
+          if (pendingController === controller) pendingController = null;
           setBusy(false);
           promptEl.focus();
         }
@@ -912,6 +988,7 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
 
       formEl.addEventListener("submit", function(event) {
         event.preventDefault();
+        if (pendingController) { cancelPending(); return; }
         sendPrompt(promptEl.value);
       });
 
@@ -919,12 +996,37 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           formEl.requestSubmit();
+          return;
+        }
+        // ↑ on an empty/navigating composer recalls previous sent messages (shell-style).
+        if (event.key === "ArrowUp") {
+          if (histPos === -1) {
+            if (promptEl.value !== "" || sentHistory.length === 0) return;
+            histPos = sentHistory.length - 1;
+          } else if (histPos > 0) {
+            histPos--;
+          } else {
+            return;
+          }
+          event.preventDefault();
+          setPromptValue(sentHistory[histPos]);
+        } else if (event.key === "ArrowDown") {
+          if (histPos === -1) return;
+          event.preventDefault();
+          if (histPos < sentHistory.length - 1) {
+            histPos++;
+            setPromptValue(sentHistory[histPos]);
+          } else {
+            histPos = -1;
+            setPromptValue("");
+          }
         }
       });
 
       promptEl.addEventListener("input", function() {
-        promptEl.style.height = "84px";
-        promptEl.style.height = Math.min(promptEl.scrollHeight, 220) + "px";
+        histPos = -1;
+        promptEl.style.height = "46px";
+        promptEl.style.height = Math.min(promptEl.scrollHeight, 200) + "px";
       });
 
       resetEl.addEventListener("click", newSession);
