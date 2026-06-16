@@ -172,7 +172,7 @@
     .pf-suggest-toggle .chev { transition: transform 160ms ease; }
     .pf-suggest.collapsed .pf-suggest-toggle .chev { transform: rotate(-90deg); }
     .pf-chips {
-      display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+      display: flex; flex-wrap: wrap; gap: 8px;
       padding: 0 18px 12px; max-height: 160px; overflow-y: auto;
       transition: max-height 180ms ease, padding 180ms ease, opacity 140ms ease;
     }
