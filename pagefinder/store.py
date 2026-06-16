@@ -173,9 +173,22 @@ class PagefinderStore:
                 "INSERT OR REPLACE INTO index_meta (key, value) VALUES ('embedding_dim', ?)",
                 (str(self.embedding_dim),),
             )
+
+            # Lightweight column migrations: CREATE TABLE IF NOT EXISTS does not add
+            # columns to pre-existing tables, so add them here when missing.
+            self._add_column_if_missing(connection, "pages", "content_text", "TEXT")
+            self._add_column_if_missing(connection, "document_updates", "diff_summary", "TEXT")
+            self._add_column_if_missing(connection, "document_updates", "change_summary", "TEXT")
+
             connection.commit()
         finally:
             connection.close()
+
+    @staticmethod
+    def _add_column_if_missing(connection, table: str, column: str, col_type: str) -> None:
+        existing = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
     def _delete_page_chunks(self, connection, page_id: str) -> None:
         rows = connection.execute(
@@ -201,8 +214,8 @@ class PagefinderStore:
                 """
                 INSERT OR REPLACE INTO pages
                     (page_id, title, url, version, fetched_at, source_mode,
-                     index_schema_version, normalized_title)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     index_schema_version, normalized_title, content_text)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     page_id,
@@ -213,6 +226,7 @@ class PagefinderStore:
                     page.get("source_mode"),
                     page.get("index_schema_version"),
                     page.get("normalized_title"),
+                    page.get("content_text", ""),
                 ),
             )
             for chunk in page.get("chunks", []):
@@ -300,6 +314,7 @@ class PagefinderStore:
             "source_mode": page_row["source_mode"],
             "index_schema_version": page_row["index_schema_version"],
             "normalized_title": page_row["normalized_title"],
+            "content_text": (page_row["content_text"] if "content_text" in page_row.keys() else ""),
             "chunks": [
                 {
                     "chunk_id": row["chunk_id"],
@@ -443,16 +458,20 @@ class PagefinderStore:
         old_version: int | None,
         new_version: int | None,
         change_type: str,
+        diff_summary: str | None = None,
+        change_summary: str | None = None,
     ) -> None:
         connection = self._connect()
         try:
             connection.execute(
                 """
                 INSERT INTO document_updates
-                    (page_id, title, old_version, new_version, change_type, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (page_id, title, old_version, new_version, change_type, updated_at,
+                     diff_summary, change_summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (page_id, title, old_version, new_version, change_type, utc_now()),
+                (page_id, title, old_version, new_version, change_type, utc_now(),
+                 diff_summary, change_summary),
             )
             connection.commit()
         finally:
@@ -466,13 +485,30 @@ class PagefinderStore:
         try:
             return connection.execute(
                 """
-                SELECT page_id, title, old_version, new_version, change_type, updated_at
+                SELECT page_id, title, old_version, new_version, change_type, updated_at, diff_summary, change_summary
                 FROM document_updates
                 WHERE updated_at > ?
                 ORDER BY updated_at ASC
                 """,
                 (since,),
             ).fetchall()
+        finally:
+            connection.close()
+
+    def get_latest_update(self, page_id: str) -> sqlite3.Row | None:
+        """Most recent recorded change for one page (for the what_changed tool)."""
+        connection = self._connect()
+        try:
+            return connection.execute(
+                """
+                SELECT page_id, title, old_version, new_version, change_type, updated_at, diff_summary, change_summary
+                FROM document_updates
+                WHERE page_id = ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (page_id,),
+            ).fetchone()
         finally:
             connection.close()
 

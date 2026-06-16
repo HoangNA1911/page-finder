@@ -1,8 +1,22 @@
+import difflib
 import hashlib
 import math
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
+
+# Confluence edit timestamps (our "version") are epoch seconds. Display them in
+# UTC+7 so users see a meaningful edit time instead of the raw version integer.
+_DISPLAY_TZ = timezone(timedelta(hours=7))
+
+
+def _format_edit_time(version: int | None) -> str:
+    """Format an epoch-seconds version as 'HH:MM DD/MM/YYYY', or '' if not parseable."""
+    try:
+        return datetime.fromtimestamp(int(version), _DISPLAY_TZ).strftime("%H:%M %d/%m/%Y")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return ""
 
 import requests
 from bs4 import BeautifulSoup
@@ -24,6 +38,19 @@ class PagefinderService:
         self.store = PagefinderStore(config.DB_PATH, config.INDEX_PATH)
         self._embedder = None
         self._embedder_ready = False
+        # Optional callable(title, diff_block, user_request) -> str. Set by runtime.
+        # Called at query time (inside the tool) so the summary follows the asking
+        # user's language, while the tool still assembles the final layout itself.
+        self.diff_summarizer = None
+
+    def summarize_change(self, title: str, diff_block: str, user_request: str = "") -> str:
+        """One short sentence describing a diff, in the user's language. '' on failure."""
+        if not diff_block or not self.diff_summarizer:
+            return ""
+        try:
+            return (self.diff_summarizer(title, diff_block, user_request) or "").strip()
+        except Exception:  # never let summary generation break the response
+            return ""
 
     def expand_query(self, query: str) -> list[str]:
         expansions = [query]
@@ -202,8 +229,52 @@ class PagefinderService:
             "source_mode": config.SOURCE_MODE,
             "index_schema_version": config.INDEX_SCHEMA_VERSION,
             "normalized_title": normalize_text(snapshot.title),
+            # Clean full-text snapshot kept for content diffing on the next version bump.
+            "content_text": self.plain_text(snapshot.body),
             "chunks": chunks,
         }
+
+    @staticmethod
+    def plain_text(html: str) -> str:
+        """Strip HTML to readable plain text (one line per block element)."""
+        soup = BeautifulSoup(html or "", "html.parser")
+        lines = []
+        for node in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "pre", "td", "th"]):
+            text = collapse_whitespace(node.get_text(" ", strip=True))
+            if text:
+                lines.append(text)
+        if not lines:
+            text = collapse_whitespace(soup.get_text(" ", strip=True))
+            return text
+        return "\n".join(lines)
+
+    def compute_content_diff(self, old_text: str, new_text: str, max_lines: int = 40) -> str:
+        """Build a ```diff fenced block (added/removed lines) from old→new plain text.
+
+        Returns "" when there is no baseline or no detectable line-level change.
+        """
+        if not old_text:
+            return ""
+        old_lines = [ln for ln in old_text.split("\n") if ln.strip()]
+        new_lines = [ln for ln in new_text.split("\n") if ln.strip()]
+        diff_lines: list[str] = []
+        added = removed = 0
+        for line in difflib.unified_diff(old_lines, new_lines, lineterm="", n=0):
+            if line.startswith("+++") or line.startswith("---") or line.startswith("@@"):
+                continue
+            if line.startswith("+"):
+                added += 1
+                diff_lines.append(line)
+            elif line.startswith("-"):
+                removed += 1
+                diff_lines.append(line)
+        if not diff_lines:
+            return ""
+        shown = diff_lines[:max_lines]
+        body = "\n".join(shown)
+        if len(diff_lines) > max_lines:
+            body += f"\n… (+{added} / -{removed} dòng tổng cộng)"
+        return f"```diff\n{body}\n```"
 
     @staticmethod
     def _log_index(message: str) -> None:
@@ -259,8 +330,13 @@ class PagefinderService:
                         page_id, snapshot.title, None, snapshot.version, "new"
                     )
                 elif stored_version != snapshot.version:
+                    diff_summary = self.compute_content_diff(
+                        stored_page.get("content_text", ""),
+                        page_payload["content_text"],
+                    )
                     self.store.record_document_update(
-                        page_id, snapshot.title, stored_version, snapshot.version, "updated"
+                        page_id, snapshot.title, stored_version, snapshot.version, "updated",
+                        diff_summary=diff_summary or None,
                     )
                 self._log_index(
                     f"Indexed page_id={page_id} title='{snapshot.title}' version={snapshot.version} "
@@ -500,7 +576,28 @@ class PagefinderService:
         text = " ".join(BeautifulSoup(snapshot.body, "html.parser").get_text(" ", strip=True).split())
         return snapshot.title, snapshot.url, text
 
-    def check_document_updates_impl(self, actor_id: str, since: str | None) -> str:
+    def what_changed_impl(self, page_id: str, user_request: str = "") -> str:
+        """Return the latest recorded content diff for one page (local lookup)."""
+        row = self.store.get_latest_update(page_id)
+        if not row:
+            return f"No recorded changes for page {page_id} yet (it may not have been re-indexed since any edit)."
+        page = self.store.get_page(page_id)
+        url = page.get("url") if page else None
+        title_md = f"[{row['title']}]({url})" if url else row["title"]
+        if row["change_type"] == "new":
+            return f"{title_md} is a newly added document; there is no previous version to compare against."
+        keys = row.keys()
+        diff = row["diff_summary"] if "diff_summary" in keys else None
+        when = _format_edit_time(row["new_version"])
+        head = f"{title_md}" + (f" · 🕒 {when}" if when else "")
+        summary = self.summarize_change(row["title"], diff or "", user_request)
+        if summary:
+            head += "\n\n" + summary
+        if not diff:
+            return head + "\n\nNo line-level diff was captured (the change may be formatting/metadata only)."
+        return head + "\n\n" + diff
+
+    def check_document_updates_impl(self, actor_id: str, since: str | None, user_request: str = "") -> str:
         """Report document changes recorded since the user last used the system.
 
         Pure local lookup: compares the user's ``last_seen`` (``since``) against the
@@ -520,19 +617,38 @@ class PagefinderService:
         if not rows:
             return "No documents have changed since you last used the system."
 
-        # Collapse multiple changes to the same page into its most recent entry.
+        # Collapse multiple changes to the same page into its most recent entry,
+        # newest first (each LLM summary is a query-time call, so order matters for
+        # the cap below).
         latest_by_page: dict[str, Any] = {}
         for row in rows:
             latest_by_page[row["page_id"]] = row
+        ordered = sorted(latest_by_page.values(), key=lambda r: r["updated_at"], reverse=True)
 
-        lines: list[str] = []
-        for row in latest_by_page.values():
+        # Cap how many docs get an LLM-generated summary, so "what's new" stays fast
+        # even when many pages changed. The rest still show their title + diff.
+        max_summaries = 4
+
+        blocks: list[str] = []
+        for index, row in enumerate(ordered):
+            page = self.store.get_page(row["page_id"])
+            url = page.get("url") if page else None
+            title_md = f"[{row['title']}]({url})" if url else row["title"]
+            keys = row.keys()
+            when = _format_edit_time(row["new_version"])
+            ts = f" · 🕒 {when}" if when else ""
+            # Bold title line (no list bullet) so the agent can't renumber it.
             if row["change_type"] == "new":
-                lines.append(f"- {row['title']} (page_id={row['page_id']}) was added.")
+                blocks.append(f"**{title_md}**{ts}")
             else:
-                lines.append(
-                    f"- {row['title']} (page_id={row['page_id']}) was updated "
-                    f"(version {row['old_version']} → {row['new_version']})."
-                )
-        header = f"{len(lines)} document(s) changed since {since}:"
-        return "\n".join([header, *lines])
+                entry = f"**{title_md}**{ts}"
+                diff = row["diff_summary"] if "diff_summary" in keys else None
+                if index < max_summaries:
+                    summary = self.summarize_change(row["title"], diff or "", user_request)
+                    if summary:
+                        entry += "\n\n" + summary
+                if diff:
+                    entry += "\n\n" + diff
+                blocks.append(entry)
+        # No hardcoded header — the agent adds a one-line intro in the user's language.
+        return "\n\n".join(blocks)

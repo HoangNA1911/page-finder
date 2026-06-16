@@ -20,6 +20,38 @@ background_sync_job = BackgroundSyncJob(service)
 checkpointer = AgentBaseMemoryEvents(memory_id=config.MEMORY_ID) if config.ENABLE_AGENTBASE_MEMORY else None
 memory_client = MemoryClient() if config.ENABLE_AGENTBASE_MEMORY else None
 llm = ChatOpenAI(model=config.LLM_MODEL, base_url=config.LLM_BASE_URL, api_key=config.LLM_API_KEY)
+
+
+# Dedicated LLM for diff summaries: short timeout + no retries so one slow/stuck
+# call can never hang the whole "what's new" request.
+summary_llm = ChatOpenAI(
+    model=config.LLM_MODEL,
+    base_url=config.LLM_BASE_URL,
+    api_key=config.LLM_API_KEY,
+    timeout=20,
+    max_retries=0,
+)
+
+
+def _summarize_diff(title: str, diff_block: str, user_request: str = "") -> str:
+    """One short sentence describing a diff, grounded strictly in it, in the SAME
+    language as the user's request. Called by the tool at query time."""
+    result = summary_llm.invoke(
+        [
+            (
+                "system",
+                "You summarize what changed in a document page in EXACTLY ONE short sentence, "
+                "based ONLY on the provided diff (lines starting with + were added, - were removed). "
+                "Reply in the SAME language as the user's request. Do not invent anything not in the "
+                "diff, and do not just repeat the diff text verbatim.",
+            ),
+            ("human", f"User request: {user_request}\n\nPage title: {title}\n\nDiff:\n{diff_block}"),
+        ]
+    )
+    return result.content
+
+
+service.diff_summarizer = _summarize_diff
 background_sync_job.start()
 
 
@@ -35,6 +67,11 @@ def get_actor_id() -> str:
 def get_last_seen_before() -> str | None:
     """The user's last-seen timestamp captured before the current request started."""
     return get_configurable().get("last_seen_before")
+
+
+def get_user_message() -> str:
+    """The current user's message, used to match the reply language for summaries."""
+    return get_configurable().get("user_message", "")
 
 
 def build_note_namespace(actor_id: str) -> str:
@@ -111,9 +148,27 @@ def index_documents() -> str:
 
 @tool
 def check_document_updates() -> str:
-    """Report which documents changed since the current user last used the system."""
+    """Report which documents changed since the current user last used the system.
+
+    The result may include a ```diff fenced block per changed page (added/removed
+    lines). Present that block verbatim — do not rewrite or summarize away the diff.
+    """
     try:
-        return service.check_document_updates_impl(get_actor_id(), get_last_seen_before())
+        return service.check_document_updates_impl(get_actor_id(), get_last_seen_before(), get_user_message())
+    except Exception as error:
+        return service.format_source_error(error)
+
+
+@tool
+def what_changed(page_id: str) -> str:
+    """Show exactly what changed in a specific document (its latest content diff).
+
+    Use when the user asks what changed / what was edited in a particular page.
+    Returns a ```diff fenced block — present it verbatim; you may add ONE short
+    sentence describing the change, but it must be grounded strictly in the diff.
+    """
+    try:
+        return service.what_changed_impl(page_id, get_user_message())
     except Exception as error:
         return service.format_source_error(error)
 
@@ -242,6 +297,7 @@ agent = create_agent(
         list_documents,
         read_document,
         check_document_updates,
+        what_changed,
         index_documents,
         sync_confluence_pages,
         add_document_note,
@@ -263,6 +319,12 @@ agent = create_agent(
         "tools, but in your answer reference documents by their title (linked to the URL) instead. "
         "When the user asks to inspect one document in depth, use read_document. "
         "When the user asks whether docs changed, use check_document_updates only; it reads the local changelog and must not trigger a Confluence sync. "
+        "When the user asks WHAT specifically changed in a given page, use what_changed(page_id). "
+        "Both tools return a ready-to-display markdown block: each document line, then its one-sentence summary, then its "
+        "own ```diff fenced block. Output that block VERBATIM — do NOT renumber, do NOT convert bullets to a numbered list, "
+        "do NOT move or collect the diffs into a separate section, do NOT repeat the document list, and do NOT add summaries "
+        "of your own (each summary is already included). Keep every ```diff block exactly where it is and unchanged. "
+        "You may add at most ONE short intro sentence at the very top; otherwise relay the tool output unchanged. "
         "When the user explicitly asks the system to index, re-index, or refresh the documents, use index_documents (incremental: only pages whose version changed). "
         "When the user asks to save or review personal notes, use add_document_note or list_document_notes. "
         "Use list_recent_reads to recover what the user opened before. "
@@ -347,6 +409,7 @@ def handler(payload: dict, context: RequestContext) -> dict:
                 "thread_id": context.session_id,
                 "actor_id": actor_id,
                 "last_seen_before": last_seen_before,
+                "user_message": message,
             }
         }
         result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=runtime_config)

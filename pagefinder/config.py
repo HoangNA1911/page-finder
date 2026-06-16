@@ -53,7 +53,7 @@ CHUNK_OVERLAP_PARAGRAPHS = int(os.environ.get("PAGEFINDER_CHUNK_OVERLAP_PARAGRAP
 SEARCH_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_SEARCH_CANDIDATE_LIMIT", "25"))
 VEC_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_VEC_CANDIDATE_LIMIT", "50"))
 FTS_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_FTS_CANDIDATE_LIMIT", "50"))
-INDEX_SCHEMA_VERSION = 4
+INDEX_SCHEMA_VERSION = 5
 
 SEARCH_SYNONYMS = {
     "approval": ["approve", "approved", "approval flow", "duyet", "phe duyet"],

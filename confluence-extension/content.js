@@ -112,6 +112,8 @@
       letter-spacing: 0.1em; color: var(--muted); padding: 0 4px;
     }
     .pf-msg.user .pf-label { text-align: right; }
+    .pf-time { font-size: 0.62rem; color: var(--muted); opacity: 0.7; padding: 0 4px; }
+    .pf-msg.user .pf-time { text-align: right; }
 
     .pf-bubble {
       border-radius: 16px; padding: 11px 14px; line-height: 1.55;
@@ -145,6 +147,25 @@
       padding: 10px 12px; border-radius: 10px; overflow-x: auto; margin: 6px 0;
     }
     .pf-bubble.md pre code { background: transparent; padding: 0; }
+    .pf-bubble.md details.pf-diff-wrap {
+      margin: 8px 0; border: 1px solid var(--border); border-radius: 10px;
+      overflow: hidden; background: var(--messages-bg);
+    }
+    .pf-bubble.md details.pf-diff-wrap summary {
+      cursor: pointer; padding: 7px 11px; font-size: 0.8rem; font-weight: 600;
+      color: var(--accent); list-style: none; user-select: none;
+    }
+    .pf-bubble.md details.pf-diff-wrap summary::-webkit-details-marker { display: none; }
+    .pf-bubble.md details.pf-diff-wrap summary::before { content: "▸ "; }
+    .pf-bubble.md details.pf-diff-wrap[open] summary::before { content: "▾ "; }
+    .pf-bubble.md .pf-diff {
+      border-top: 1px solid var(--border); background: #ffffff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.78em; line-height: 1.55;
+    }
+    .pf-bubble.md .pf-diff .pf-diff-line { display: block; padding: 1px 12px; white-space: pre-wrap; word-break: break-word; }
+    .pf-bubble.md .pf-diff .pf-diff-add { background: #e6ffec; color: #116329; }
+    .pf-bubble.md .pf-diff .pf-diff-del { background: #ffebe9; color: #a40e26; }
+    .pf-bubble.md .pf-diff .pf-diff-ctx { color: var(--muted); }
     .pf-bubble.md table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 0.88em; display: block; overflow-x: auto; }
     .pf-bubble.md th, .pf-bubble.md td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; vertical-align: top; }
     .pf-bubble.md th { background: var(--messages-bg); font-weight: 600; }
@@ -265,10 +286,26 @@
       const line = lines[i];
       if (/^\s*```/.test(line)) {
         flushPara(); closeList();
+        const lang = line.replace(/^\s*```/, "").trim().toLowerCase();
         const code = [];
         i++;
         while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
-        html += "<pre><code>" + code.join("\n") + "</code></pre>";
+        if (lang === "diff") {
+          let added = 0, removed = 0;
+          let dh = '<div class="pf-diff">';
+          for (const raw of code) {
+            const c = raw.replace(/^[ \t]+/, "");  // strip markdown nesting indent
+            let cls = "pf-diff-ctx";
+            if (c.charAt(0) === "+") { cls = "pf-diff-add"; added++; }
+            else if (c.charAt(0) === "-") { cls = "pf-diff-del"; removed++; }
+            dh += '<span class="pf-diff-line ' + cls + '">' + (c || " ") + "</span>";
+          }
+          dh += "</div>";
+          const sum = "View changes (+" + added + " −" + removed + ")";
+          html += '<details class="pf-diff-wrap"><summary>' + sum + "</summary>" + dh + "</details>";
+        } else {
+          html += "<pre><code>" + code.join("\n") + "</code></pre>";
+        }
         continue;
       }
       if (line.indexOf("|") !== -1 && i + 1 < lines.length && isTableSep(lines[i + 1])) {
@@ -419,8 +456,12 @@
     bubble.className = "pf-bubble";
     if (isMarkdown) { bubble.classList.add("md"); bubble.innerHTML = renderMarkdown(text); }
     else { bubble.textContent = text; }
+    const time = document.createElement("div");
+    time.className = "pf-time";
+    time.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     wrap.appendChild(label);
     wrap.appendChild(bubble);
+    wrap.appendChild(time);
     messagesEl.appendChild(wrap);
     messagesEl.scrollTop = messagesEl.scrollHeight;
     return bubble;

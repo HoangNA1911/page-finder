@@ -301,6 +301,16 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         text-align: right;
       }
 
+      .message-time {
+        font-size: 0.66rem;
+        color: var(--muted);
+        opacity: 0.7;
+        padding: 0 6px;
+      }
+      .message.user .message-time {
+        text-align: right;
+      }
+
       .bubble {
         border-radius: 16px;
         padding: 11px 15px;
@@ -406,6 +416,56 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         padding: 0;
         font-size: 0.86em;
       }
+
+      .bubble.md details.diff-wrap {
+        margin: 8px 0;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--messages-bg);
+      }
+      .bubble.md details.diff-wrap summary {
+        cursor: pointer;
+        padding: 8px 12px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--accent);
+        list-style: none;
+        user-select: none;
+      }
+      .bubble.md details.diff-wrap summary::-webkit-details-marker { display: none; }
+      .bubble.md details.diff-wrap summary::before {
+        content: "▸ ";
+        display: inline-block;
+        transition: transform 120ms ease;
+      }
+      .bubble.md details.diff-wrap[open] summary::before { content: "▾ "; }
+
+      .bubble.md .diff {
+        border-top: 1px solid var(--border);
+        background: #ffffff;
+        font-family: var(--font-mono);
+        font-size: 0.8em;
+        line-height: 1.55;
+      }
+      .bubble.md .diff .diff-line {
+        display: block;
+        padding: 1px 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .bubble.md .diff .diff-add {
+        background: #e6ffec;
+        color: #116329;
+      }
+      .bubble.md .diff .diff-del {
+        background: #ffebe9;
+        color: #a40e26;
+      }
+      .bubble.md .diff .diff-ctx { color: var(--muted); }
+      [data-theme="dark"] .bubble.md .diff { background: #0d1117; }
+      [data-theme="dark"] .bubble.md .diff .diff-add { background: rgba(46, 160, 67, 0.18); color: #7ee787; }
+      [data-theme="dark"] .bubble.md .diff .diff-del { background: rgba(248, 81, 73, 0.16); color: #ffa198; }
 
       .bubble.md blockquote {
         margin: 8px 0;
@@ -828,10 +888,26 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
           const line = lines[i];
           if (/^\s*```/.test(line)) {
             flushPara(); closeList();
+            const lang = line.replace(/^\s*```/, "").trim().toLowerCase();
             const code = [];
             i++;
             while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
-            html += "<pre><code>" + code.join("\n") + "</code></pre>";
+            if (lang === "diff") {
+              let added = 0, removed = 0;
+              let dh = '<div class="diff">';
+              for (const raw of code) {
+                const c = raw.replace(/^[ \t]+/, "");  // strip markdown nesting indent
+                let cls = "diff-ctx";
+                if (c.charAt(0) === "+") { cls = "diff-add"; added++; }
+                else if (c.charAt(0) === "-") { cls = "diff-del"; removed++; }
+                dh += '<span class="diff-line ' + cls + '">' + (c || " ") + "</span>";
+              }
+              dh += "</div>";
+              const sum = "View changes (+" + added + " −" + removed + ")";
+              html += '<details class="diff-wrap"><summary>' + sum + "</summary>" + dh + "</details>";
+            } else {
+              html += "<pre><code>" + code.join("\n") + "</code></pre>";
+            }
             continue;
           }
           if (line.indexOf("|") !== -1 && i + 1 < lines.length && isTableSep(lines[i + 1])) {
@@ -903,8 +979,13 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
           bubble.textContent = text;
         }
 
+        const time = document.createElement("div");
+        time.className = "message-time";
+        time.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
         wrapper.appendChild(label);
         wrapper.appendChild(bubble);
+        wrapper.appendChild(time);
         messagesEl.appendChild(wrapper);
         messagesEl.scrollTop = messagesEl.scrollHeight;
         return bubble;
