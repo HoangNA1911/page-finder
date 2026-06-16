@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Pagefinder for Confluence",
+  "version": "0.1.0",
+  "description": "Chat nổi trên trang Confluence, hỏi đáp tài liệu qua agent Pagefinder.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.agentbase-runtime.aiplatform.vngcloud.vn/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.atlassian.net/wiki/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
