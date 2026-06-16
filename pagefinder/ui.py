@@ -742,10 +742,10 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         <div class="meta-block">
           <p class="hint">Mình giúp được gì</p>
           <ul class="cap-list">
-            <li><span>🔍</span> Tìm kiếm trong tài liệu đã index</li>
-            <li><span>📄</span> Tóm gọn nhanh một trang dài</li>
-            <li><span>🔔</span> Cho biết tài liệu nào vừa cập nhật</li>
-            <li><span>📝</span> Lưu &amp; xem lại ghi chú cá nhân</li>
+            <li>Tìm kiếm trong tài liệu đã index</li>
+            <li>Tóm gọn nhanh một trang dài</li>
+            <li>Cho biết tài liệu nào vừa cập nhật</li>
+            <li>Lưu &amp; xem lại ghi chú cá nhân</li>
           </ul>
         </div>
 

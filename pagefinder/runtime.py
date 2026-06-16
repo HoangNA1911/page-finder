@@ -12,7 +12,15 @@ from pagefinder import config
 from pagefinder.background import BackgroundSyncJob
 from pagefinder.service import PagefinderService
 from pagefinder.ui import register_ui_routes
-from pagefinder.utils import build_namespace, extract_page_ids_from_text, looks_like_summary_request, utc_now
+from pagefinder.utils import (
+    build_namespace,
+    extract_page_ids_from_text,
+    is_vietnamese,
+    looks_like_list_request,
+    looks_like_summary_request,
+    looks_like_whats_new_request,
+    utc_now,
+)
 
 app = GreenNodeAgentBaseApp()
 service = PagefinderService()
@@ -262,6 +270,41 @@ def list_recent_reads(limit: int = 10) -> str:
     )
 
 
+def _list_documents_text(message: str = "") -> str:
+    """Build the markdown bullet list of indexed documents (shared by the tool and
+    the handler fast-path). Header language follows the user's question."""
+    vi = is_vietnamese(message)
+    try:
+        total = service.store.count_pages()
+        rows = service.store.list_pages(limit=60)
+    except Exception as error:
+        return service.format_source_error(error)
+    if not rows:
+        return (
+            "Chưa có tài liệu nào được lập chỉ mục. Hãy yêu cầu mình index/đồng bộ các trang Confluence trước."
+            if vi else
+            "No documents are indexed yet. Ask me to index/sync the Confluence pages first."
+        )
+    # Square brackets in a title break markdown link syntax ([label](url)); swap them.
+    lines = [
+        f"- [{row['title'].replace('[', '(').replace(']', ')')}]({row['url']})"
+        for row in rows
+    ]
+    if vi:
+        header = (
+            f"{total} tài liệu đã được lập chỉ mục (hiển thị {len(rows)} đầu tiên):"
+            if total > len(rows)
+            else f"{total} tài liệu đã được lập chỉ mục:"
+        )
+    else:
+        header = (
+            f"{total} indexed documents (showing first {len(rows)}):"
+            if total > len(rows)
+            else f"{total} indexed document(s):"
+        )
+    return header + "\n" + "\n".join(lines)
+
+
 @tool
 def list_documents() -> str:
     """List every document currently in the indexed set as clickable title links.
@@ -270,24 +313,7 @@ def list_documents() -> str:
     WITHOUT giving a search keyword (e.g. "list all documents", "what docs do you have").
     Returns a ready-to-display markdown bullet list of linked titles — present it as-is.
     """
-    try:
-        total = service.store.count_pages()
-        rows = service.store.list_pages(limit=60)
-    except Exception as error:
-        return service.format_source_error(error)
-    if not rows:
-        return "No documents are indexed yet. Ask me to index/sync the Confluence pages first."
-    # Square brackets in a title break markdown link syntax ([label](url)); swap them.
-    lines = [
-        f"- [{row['title'].replace('[', '(').replace(']', ')')}]({row['url']})"
-        for row in rows
-    ]
-    header = (
-        f"{total} indexed documents (showing first {len(rows)}):"
-        if total > len(rows)
-        else f"{total} indexed document(s):"
-    )
-    return header + "\n" + "\n".join(lines)
+    return _list_documents_text(get_user_message())
 
 
 agent = create_agent(
@@ -328,7 +354,8 @@ agent = create_agent(
         "When the user explicitly asks the system to index, re-index, or refresh the documents, use index_documents (incremental: only pages whose version changed). "
         "When the user asks to save or review personal notes, use add_document_note or list_document_notes. "
         "Use list_recent_reads to recover what the user opened before. "
-        "If the indexed corpus is insufficient, say that the scope is limited to the configured documents."
+        "If the indexed corpus is insufficient, say that the scope is limited to the configured documents. "
+        "Do NOT use emojis or decorative icons anywhere in your answers; keep the text plain."
     ),
     checkpointer=checkpointer,
 )
@@ -403,6 +430,18 @@ def handler(payload: dict, context: RequestContext) -> dict:
             if page_content.startswith("Could not read") or page_content.startswith("Page "):
                 return {"status": "success", "response": page_content, "timestamp": utc_now()}
             return {"status": "success", "response": page_content, "timestamp": utc_now()}
+
+        # Fast-paths: deterministic intents that need no agent reasoning. Calling the
+        # tool logic directly skips both LLM round-trips (tool-selection + relay), so
+        # these answers return in milliseconds instead of waiting on the model twice.
+        if looks_like_list_request(message):
+            return {"status": "success", "response": _list_documents_text(message), "timestamp": utc_now()}
+        if looks_like_whats_new_request(message):
+            try:
+                whats_new = service.check_document_updates_impl(actor_id, last_seen_before, message)
+            except Exception as error:
+                whats_new = service.format_source_error(error)
+            return {"status": "success", "response": whats_new, "timestamp": utc_now()}
 
         runtime_config = {
             "configurable": {

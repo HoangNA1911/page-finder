@@ -133,6 +133,14 @@
     .pf-bubble.md > :first-child { margin-top: 0; }
     .pf-bubble.md > :last-child { margin-bottom: 0; }
     .pf-bubble.md p { margin: 0 0 8px; }
+    .pf-bubble.md h1, .pf-bubble.md h2, .pf-bubble.md h3,
+    .pf-bubble.md h4, .pf-bubble.md h5, .pf-bubble.md h6 {
+      margin: 12px 0 6px; line-height: 1.3; font-weight: 700; color: #0c2c28;
+    }
+    .pf-bubble.md h1 { font-size: 1.12rem; }
+    .pf-bubble.md h2 { font-size: 1.04rem; }
+    .pf-bubble.md h3 { font-size: 0.98rem; }
+    .pf-bubble.md h4, .pf-bubble.md h5, .pf-bubble.md h6 { font-size: 0.92rem; }
     .pf-bubble.md ul, .pf-bubble.md ol { margin: 6px 0 8px; padding-left: 20px; }
     .pf-bubble.md li { margin: 2px 0; }
     .pf-bubble.md strong { color: #0c2c28; font-weight: 700; }

@@ -24,7 +24,7 @@ from bs4 import BeautifulSoup
 from pagefinder import config
 from pagefinder.sources import ConfluenceClient, PageSnapshot
 from pagefinder.store import PagefinderStore
-from pagefinder.utils import collapse_whitespace, normalize_text, tokenize, utc_now
+from pagefinder.utils import collapse_whitespace, is_vietnamese, normalize_text, tokenize, utc_now
 
 
 class PagefinderService:
@@ -578,23 +578,36 @@ class PagefinderService:
 
     def what_changed_impl(self, page_id: str, user_request: str = "") -> str:
         """Return the latest recorded content diff for one page (local lookup)."""
+        vi = is_vietnamese(user_request)
         row = self.store.get_latest_update(page_id)
         if not row:
-            return f"No recorded changes for page {page_id} yet (it may not have been re-indexed since any edit)."
+            return (
+                f"Chưa ghi nhận thay đổi nào cho trang {page_id} (có thể trang chưa được index lại sau khi sửa)."
+                if vi else
+                f"No recorded changes for page {page_id} yet (it may not have been re-indexed since any edit)."
+            )
         page = self.store.get_page(page_id)
         url = page.get("url") if page else None
         title_md = f"[{row['title']}]({url})" if url else row["title"]
         if row["change_type"] == "new":
-            return f"{title_md} is a newly added document; there is no previous version to compare against."
+            return (
+                f"{title_md} là tài liệu mới được thêm; chưa có phiên bản trước để so sánh."
+                if vi else
+                f"{title_md} is a newly added document; there is no previous version to compare against."
+            )
         keys = row.keys()
         diff = row["diff_summary"] if "diff_summary" in keys else None
         when = _format_edit_time(row["new_version"])
-        head = f"{title_md}" + (f" · 🕒 {when}" if when else "")
+        head = f"{title_md}" + (f" · {when}" if when else "")
         summary = self.summarize_change(row["title"], diff or "", user_request)
         if summary:
             head += "\n\n" + summary
         if not diff:
-            return head + "\n\nNo line-level diff was captured (the change may be formatting/metadata only)."
+            return head + "\n\n" + (
+                "Không bắt được diff theo dòng (có thể chỉ đổi định dạng/metadata)."
+                if vi else
+                "No line-level diff was captured (the change may be formatting/metadata only)."
+            )
         return head + "\n\n" + diff
 
     def check_document_updates_impl(self, actor_id: str, since: str | None, user_request: str = "") -> str:
@@ -607,15 +620,23 @@ class PagefinderService:
         ``since`` is the user's previous last-seen timestamp, captured before the
         current request.
         """
+        vi = is_vietnamese(user_request)
         if not since:
             return (
+                "Đây có vẻ là phiên đầu tiên của bạn nên chưa có lần truy cập trước để so sánh. "
+                "Mình sẽ theo dõi các cập nhật tài liệu từ bây giờ."
+                if vi else
                 "This looks like your first session, so there is no earlier visit to "
                 "compare against yet. I'll track document updates from now on."
             )
 
         rows = self.store.get_updates_since(since)
         if not rows:
-            return "No documents have changed since you last used the system."
+            return (
+                "Không có tài liệu nào thay đổi kể từ lần bạn dùng gần nhất."
+                if vi else
+                "No documents have changed since you last used the system."
+            )
 
         # Collapse multiple changes to the same page into its most recent entry,
         # newest first (each LLM summary is a query-time call, so order matters for
@@ -636,7 +657,7 @@ class PagefinderService:
             title_md = f"[{row['title']}]({url})" if url else row["title"]
             keys = row.keys()
             when = _format_edit_time(row["new_version"])
-            ts = f" · 🕒 {when}" if when else ""
+            ts = f" · {when}" if when else ""
             # Bold title line (no list bullet) so the agent can't renumber it.
             if row["change_type"] == "new":
                 blocks.append(f"**{title_md}**{ts}")
