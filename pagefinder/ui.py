@@ -35,7 +35,7 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         --font-display: "Space Grotesk", "Inter", ui-sans-serif, system-ui, sans-serif;
         --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-        --sidebar-w: 280px;
+        --sidebar-w: 320px;
       }
 
       /* Dark = neutral charcoal-slate (no teal tint on surfaces); teal is ACCENT only. */
@@ -1090,8 +1090,8 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
       resizerEl.addEventListener("pointerup", endResize);
       resizerEl.addEventListener("pointercancel", endResize);
       resizerEl.addEventListener("dblclick", function() {
-        shellEl.style.setProperty("--sidebar-w", "280px");
-        localStorage.setItem("pagefinder-sidebar-w", "280px");
+        shellEl.style.setProperty("--sidebar-w", "320px");
+        localStorage.setItem("pagefinder-sidebar-w", "320px");
       });
 
       ensureIdentity();
