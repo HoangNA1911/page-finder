@@ -96,13 +96,22 @@ def _memory_records(result) -> list:
     return list(result)
 
 
+def _rec_field(row, name):
+    """Read a field from a memory record that may be a dict or an SDK model object."""
+    if isinstance(row, dict):
+        return row.get(name)
+    return getattr(row, name, None)
+
+
 @tool
 def remember(fact: str) -> str:
     """Store a user preference or fact for later conversations."""
     if not config.ENABLE_AGENTBASE_MEMORY or memory_client is None:
         return "AgentBase Memory is disabled in this deployment."
     namespace = build_namespace(config.MEMORY_STRATEGY_ID, get_actor_id())
-    memory_client.insert_memory_records_directly(id=config.MEMORY_ID, namespace=namespace, request=[fact])
+    memory_client.insert_memory_records_directly(
+        id=config.MEMORY_ID, namespace=namespace, request={"memoryRecords": [fact]}
+    )
     return f"Remembered: {fact}"
 
 
@@ -117,9 +126,17 @@ def recall(query: str) -> str:
         namespace=namespace,
         request=MemoryRecordSearchRequest(query=query, limit=10),
     )
-    if not results:
+    rows = _memory_records(results)
+    lines = []
+    for row in rows:
+        mem = _rec_field(row, "memory")
+        if not mem:
+            continue
+        score = _rec_field(row, "score")
+        lines.append(f"- {mem} (score: {score:.2f})" if isinstance(score, (int, float)) else f"- {mem}")
+    if not lines:
         return "No relevant memories found."
-    return "\n".join(f"- {row.memory} (score: {row.score:.2f})" for row in results)
+    return "\n".join(lines)
 
 
 @tool
@@ -236,7 +253,9 @@ def add_document_note(page_id: str, note: str) -> str:
         return f"Page {page_id} is not indexed yet. Sync or read it first."
     namespace = build_note_namespace(actor_id)
     record = f"page_id={page_id} | title={page['title']} | {note}"
-    memory_client.insert_memory_records_directly(id=config.MEMORY_ID, namespace=namespace, request=[record])
+    memory_client.insert_memory_records_directly(
+        id=config.MEMORY_ID, namespace=namespace, request={"memoryRecords": [record]}
+    )
     return f"Saved note for {page['title']} (page_id={page_id})."
 
 
@@ -249,14 +268,90 @@ def list_document_notes(page_id: str = "") -> str:
     namespace = build_note_namespace(actor_id)
     records = _memory_records(memory_client.list_memory_records(id=config.MEMORY_ID, namespace=namespace))
     prefix = f"page_id={page_id} |" if page_id else ""
-    lines = [
-        f"- {row.memory}"
-        for row in records
-        if row.memory and (not prefix or row.memory.startswith(prefix))
-    ]
+    lines = []
+    for row in records:
+        mem = _rec_field(row, "memory")
+        if mem and (not prefix or mem.startswith(prefix)):
+            lines.append(f"- {mem}")
     if not lines:
         return "No saved document notes found."
     return "\n".join(lines)
+
+
+def _parse_note_record(mem: str) -> tuple[str, str, str]:
+    """Split a stored note record 'page_id=X | title=Y | <note>' into (page_id, title, note)."""
+    parts = mem.split(" | ", 2)
+    pid = parts[0][len("page_id="):] if parts[0].startswith("page_id=") else ""
+    title = parts[1][len("title="):] if len(parts) > 1 and parts[1].startswith("title=") else ""
+    note = parts[2] if len(parts) > 2 else ""
+    return pid, title, note
+
+
+def _find_note_matches(page_id: str, note_text: str) -> list[tuple[str, str]]:
+    """Return [(record_id, memory_text)] of the current user's notes matching the given
+    page_id and/or a case-insensitive snippet of the note text."""
+    namespace = build_note_namespace(get_actor_id())
+    records = _memory_records(memory_client.list_memory_records(id=config.MEMORY_ID, namespace=namespace))
+    matches = []
+    for row in records:
+        mem = _rec_field(row, "memory")
+        rid = _rec_field(row, "id")
+        if not mem or not rid:
+            continue
+        if page_id and not mem.startswith(f"page_id={page_id} |"):
+            continue
+        if note_text and note_text.lower() not in mem.lower():
+            continue
+        matches.append((rid, mem))
+    return matches
+
+
+@tool
+def delete_document_note(page_id: str = "", note_text: str = "") -> str:
+    """Delete a saved personal note. Identify it by its page_id and/or a snippet of the
+    note text. Call list_document_notes first to see existing notes. If several notes
+    match, they are listed back so you can narrow down with a more specific note_text."""
+    if not config.ENABLE_AGENTBASE_MEMORY or memory_client is None:
+        return "AgentBase Memory is disabled in this deployment; cannot delete notes."
+    if not page_id and not note_text:
+        return "Specify which note to delete (a page_id and/or a snippet of the note text)."
+    matches = _find_note_matches(page_id, note_text)
+    if not matches:
+        return "No matching note found to delete."
+    if len(matches) > 1:
+        listing = "\n".join(f"- {mem}" for _, mem in matches)
+        return "Multiple notes match; be more specific about the note text:\n" + listing
+    rid, mem = matches[0]
+    memory_client.delete_memory_record(id=config.MEMORY_ID, memoryRecordId=rid)
+    _, title, note = _parse_note_record(mem)
+    return f"Deleted note \"{note}\" for {title or page_id}."
+
+
+@tool
+def update_document_note(new_note: str, page_id: str = "", note_text: str = "") -> str:
+    """Edit a saved personal note: replace its text with new_note. Identify the note to
+    edit by its page_id and/or a snippet of the current note text (note_text). Call
+    list_document_notes first. If several notes match, they are listed back so you can
+    narrow down with a more specific note_text."""
+    if not config.ENABLE_AGENTBASE_MEMORY or memory_client is None:
+        return "AgentBase Memory is disabled in this deployment; cannot edit notes."
+    if not page_id and not note_text:
+        return "Specify which note to edit (a page_id and/or a snippet of the current note text)."
+    matches = _find_note_matches(page_id, note_text)
+    if not matches:
+        return "No matching note found to edit."
+    if len(matches) > 1:
+        listing = "\n".join(f"- {mem}" for _, mem in matches)
+        return "Multiple notes match; be more specific about the note text:\n" + listing
+    rid, mem = matches[0]
+    pid, title, old_note = _parse_note_record(mem)
+    namespace = build_note_namespace(get_actor_id())
+    new_record = f"page_id={pid} | title={title} | {new_note}"
+    memory_client.insert_memory_records_directly(
+        id=config.MEMORY_ID, namespace=namespace, request={"memoryRecords": [new_record]}
+    )
+    memory_client.delete_memory_record(id=config.MEMORY_ID, memoryRecordId=rid)
+    return f"Updated note for {title or pid}: \"{old_note}\" → \"{new_note}\"."
 
 
 @tool
@@ -330,6 +425,8 @@ agent = create_agent(
         sync_confluence_pages,
         add_document_note,
         list_document_notes,
+        delete_document_note,
+        update_document_note,
         list_recent_reads,
         remember,
         recall,
@@ -355,6 +452,9 @@ agent = create_agent(
         "You may add at most ONE short intro sentence at the very top; otherwise relay the tool output unchanged. "
         "When the user explicitly asks the system to index, re-index, or refresh the documents, use index_documents (incremental: only pages whose version changed). "
         "When the user asks to save or review personal notes, use add_document_note or list_document_notes. "
+        "To delete a note use delete_document_note, and to edit/change a note use update_document_note; for both, "
+        "first call list_document_notes to find the right note, then identify it by its page_id and/or a snippet of "
+        "its note_text. If the tool reports multiple matches, ask the user which one (by note text). "
         "Use list_recent_reads to recover what the user opened before. "
         "If the indexed corpus is insufficient, say that the scope is limited to the configured documents. "
         "Do NOT use emojis or decorative icons anywhere in your answers; keep the text plain."
@@ -438,14 +538,16 @@ def handler(payload: dict, context: RequestContext) -> dict:
         # Fast-paths: deterministic intents that need no agent reasoning. Calling the
         # tool logic directly skips both LLM round-trips (tool-selection + relay), so
         # these answers return in milliseconds instead of waiting on the model twice.
-        if looks_like_list_request(message):
-            return {"status": "success", "response": _list_documents_text(message), "timestamp": utc_now()}
+        # what's-new is checked before list: an update question can contain "tài liệu nào"
+        # which would otherwise look like a plain list request.
         if looks_like_whats_new_request(message):
             try:
                 whats_new = service.check_document_updates_impl(actor_id, last_update_check_before, message)
             except Exception as error:
                 whats_new = service.format_source_error(error)
             return {"status": "success", "response": whats_new, "timestamp": utc_now()}
+        if looks_like_list_request(message):
+            return {"status": "success", "response": _list_documents_text(message), "timestamp": utc_now()}
 
         runtime_config = {
             "configurable": {

@@ -71,6 +71,10 @@ def is_vietnamese(message: str) -> bool:
 
 def looks_like_list_request(message: str) -> bool:
     """True for a bare 'show me all the documents' request (no search keyword)."""
+    # A "what changed / what's new" question is never a plain list request, even though
+    # it can contain "tài liệu nào". Defer to the what's-new intent.
+    if looks_like_whats_new_request(message):
+        return False
     lowered = normalize_text(fold_accents(message))
     padded = f" {lowered} "
     if any(f" {q} " in padded for q in _SEARCH_QUALIFIERS):
