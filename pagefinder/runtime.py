@@ -1,7 +1,10 @@
 from langchain.agents import create_agent
+from langchain.agents.middleware import before_model
+from langchain_core.messages import HumanMessage, RemoveMessage
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from langgraph.config import get_config
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langchain_openai import ChatOpenAI
 
 from greennode_agentbase import GreenNodeAgentBaseApp, PingStatus, RequestContext
 from greennode_agentbase.memory import MemoryClient
@@ -433,8 +436,27 @@ def list_documents() -> str:
     return _list_documents_text(get_user_message())
 
 
+# Keep only the last few user turns in the conversation thread. The agent's checkpointer
+# persists history per session_id, and replaying a long thread to the LLM every turn is
+# what made long-lived browser sessions take 1-2 min (vs ~30s for a fresh session). This
+# trims (and permanently shrinks) the thread before each model call — no extra LLM call.
+_KEEP_TURNS = 3
+
+
+@before_model
+def trim_history(state, runtime):
+    messages = state["messages"]
+    human_positions = [i for i, m in enumerate(messages) if isinstance(m, HumanMessage)]
+    if len(human_positions) <= _KEEP_TURNS:
+        return None
+    start = human_positions[-_KEEP_TURNS]
+    kept = messages[start:]
+    return {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *kept]}
+
+
 agent = create_agent(
     llm,
+    middleware=[trim_history],
     tools=[
         search_documents,
         list_documents,

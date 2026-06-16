@@ -21,6 +21,17 @@ EMBEDDING_API_KEY = os.environ.get("PAGEFINDER_EMBEDDING_API_KEY", LLM_API_KEY)
 EMBEDDING_DIM = int(os.environ.get("PAGEFINDER_EMBEDDING_DIM", "1536"))
 EMBEDDING_BATCH_SIZE = int(os.environ.get("PAGEFINDER_EMBEDDING_BATCH_SIZE", "64"))
 
+# Neural reranker (cross-encoder). After hybrid retrieval gathers candidates, the reranker
+# scores each (query, chunk) pair directly — far more accurate (and cross-lingual) than the
+# bi-encoder cosine. Disabled unless a model is configured; degrades to hybrid order on error.
+RERANK_MODEL = os.environ.get("PAGEFINDER_RERANK_MODEL", "")
+RERANK_BASE_URL = os.environ.get("PAGEFINDER_RERANK_BASE_URL", LLM_BASE_URL)
+RERANK_API_KEY = os.environ.get("PAGEFINDER_RERANK_API_KEY", LLM_API_KEY)
+RERANK_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_RERANK_CANDIDATE_LIMIT", "20"))
+# Final score = RERANK_WEIGHT * neural + (1 - RERANK_WEIGHT) * hybrid (both in 0..1).
+RERANK_WEIGHT = float(os.environ.get("PAGEFINDER_RERANK_WEIGHT", "0.8"))
+RERANK_TIMEOUT = float(os.environ.get("PAGEFINDER_RERANK_TIMEOUT", "15"))
+
 # Confluence is the only supported source. The local Markdown mode has been removed.
 SOURCE_MODE = "confluence"
 
@@ -53,7 +64,7 @@ CHUNK_OVERLAP_PARAGRAPHS = int(os.environ.get("PAGEFINDER_CHUNK_OVERLAP_PARAGRAP
 SEARCH_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_SEARCH_CANDIDATE_LIMIT", "25"))
 VEC_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_VEC_CANDIDATE_LIMIT", "50"))
 FTS_CANDIDATE_LIMIT = int(os.environ.get("PAGEFINDER_FTS_CANDIDATE_LIMIT", "50"))
-INDEX_SCHEMA_VERSION = 5
+INDEX_SCHEMA_VERSION = 8
 
 SEARCH_SYNONYMS = {
     "approval": ["approve", "approved", "approval flow", "duyet", "phe duyet"],

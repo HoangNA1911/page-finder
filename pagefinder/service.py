@@ -164,13 +164,30 @@ class PagefinderService:
                     model=config.EMBEDDING_MODEL,
                     base_url=config.EMBEDDING_BASE_URL,
                     api_key=config.EMBEDDING_API_KEY,
-                    dimensions=config.EMBEDDING_DIM,
                     chunk_size=config.EMBEDDING_BATCH_SIZE,
+                    # Send raw strings, not pre-tokenized int arrays. The GreenNode/HF
+                    # embeddings backend rejects token arrays ("input must be string"),
+                    # and this model ignores the `dimensions` param (always 4096), so we
+                    # don't pass it and instead match EMBEDDING_DIM to the native size.
+                    check_embedding_ctx_length=False,
                 )
             except Exception as error:  # noqa: BLE001 - degrade gracefully to cheap_embedding
                 print(f"[pagefinder] embedding init failed, falling back to cheap_embedding: {error}")
                 self._embedder = None
         return self._embedder
+
+    @staticmethod
+    def _l2_normalize(vector: list[float]) -> list[float]:
+        """Scale a vector to unit length. sqlite-vec KNN ranks by L2 distance, which only
+        matches cosine similarity when vectors are normalized — the embedding API returns
+        vectors with widely varying magnitudes (norm 5-17), so without this, retrieval is
+        dominated by magnitude and a few high-norm chunks win every query. Coerces any
+        None elements (the API returns null vectors for blank inputs) to 0.0."""
+        clean = [float(x) if isinstance(x, (int, float)) else 0.0 for x in vector]
+        norm = math.sqrt(sum(x * x for x in clean))
+        if norm == 0:
+            return clean
+        return [x / norm for x in clean]
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -178,9 +195,11 @@ class PagefinderService:
         embedder = self._get_embedder()
         if embedder is not None:
             try:
-                vectors = embedder.embed_documents(list(texts))
+                # Blank inputs make the API return null vectors; send a space instead.
+                safe_texts = [t if (t and t.strip()) else " " for t in texts]
+                vectors = embedder.embed_documents(safe_texts)
                 if vectors and len(vectors[0]) == config.EMBEDDING_DIM:
-                    return vectors
+                    return [self._l2_normalize(v) for v in vectors]
                 print(
                     f"[pagefinder] embedding dimension mismatch (got "
                     f"{len(vectors[0]) if vectors else 0}, expected {config.EMBEDDING_DIM}); "
@@ -188,7 +207,7 @@ class PagefinderService:
                 )
             except Exception as error:  # noqa: BLE001 - degrade gracefully
                 print(f"[pagefinder] embedding request failed, falling back to cheap_embedding: {error}")
-        return [self.cheap_embedding(text) for text in texts]
+        return [self._l2_normalize(self.cheap_embedding(text)) for text in texts]
 
     def embed_query(self, text: str) -> list[float]:
         embedder = self._get_embedder()
@@ -196,10 +215,10 @@ class PagefinderService:
             try:
                 vector = embedder.embed_query(text)
                 if len(vector) == config.EMBEDDING_DIM:
-                    return vector
+                    return self._l2_normalize(vector)
             except Exception as error:  # noqa: BLE001 - degrade gracefully
                 print(f"[pagefinder] query embedding failed, falling back to cheap_embedding: {error}")
-        return self.cheap_embedding(text)
+        return self._l2_normalize(self.cheap_embedding(text))
 
     @staticmethod
     def cosine_similarity(left: list[float], right: list[float]) -> float:
@@ -494,6 +513,32 @@ class PagefinderService:
                 rowids.append(rowid)
         return rowids
 
+    def rerank_scores(self, query: str, documents: list[str]) -> list[float] | None:
+        """Cross-encoder relevance of each document to the query, via the rerank endpoint.
+        Returns scores aligned to ``documents`` (0..1), or None on any failure so the
+        caller can fall back to the hybrid order."""
+        if not (config.RERANK_MODEL and config.RERANK_API_KEY and config.RERANK_BASE_URL) or not documents:
+            return None
+        url = config.RERANK_BASE_URL.rstrip("/") + "/rerank"
+        try:
+            response = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {config.RERANK_API_KEY}", "Content-Type": "application/json"},
+                json={"model": config.RERANK_MODEL, "query": query, "documents": documents},
+                timeout=config.RERANK_TIMEOUT,
+            )
+            response.raise_for_status()
+            results = response.json().get("results", [])
+            scores = [0.0] * len(documents)
+            for item in results:
+                idx = item.get("index")
+                if isinstance(idx, int) and 0 <= idx < len(documents):
+                    scores[idx] = float(item.get("relevance_score", 0.0))
+            return scores
+        except Exception as error:  # noqa: BLE001 - degrade gracefully to hybrid ranking
+            print(f"[pagefinder.rerank] rerank failed, using hybrid order: {error}")
+            return None
+
     def search_chunks(self, query: str, limit: int) -> list[dict[str, Any]]:
         self.ensure_index_ready()
         query_variants = self.expand_query(query)
@@ -529,7 +574,26 @@ class PagefinderService:
             reverse=True,
         )
         candidate_limit = max(limit * 4, config.SEARCH_CANDIDATE_LIMIT)
-        return self.dedupe_and_rerank_matches(matches[:candidate_limit], limit)
+        top = matches[:candidate_limit]
+
+        # Neural rerank stage: re-score the top hybrid candidates with a cross-encoder that
+        # reads (query, chunk) together — much stronger and more cross-lingual than the
+        # bi-encoder cosine — then blend it with the hybrid score.
+        rerank_pool = top[: config.RERANK_CANDIDATE_LIMIT]
+        documents = [f"{m['title']}\n{m['heading']}\n{m['text']}".strip() for m in rerank_pool]
+        neural = self.rerank_scores(query, documents)
+        if neural is not None:
+            w = config.RERANK_WEIGHT
+            for match, neural_score in zip(rerank_pool, neural):
+                match["rerank_score"] = neural_score
+                match["score"] = w * neural_score + (1 - w) * match["score"]
+            rerank_pool.sort(
+                key=lambda item: (item["score"], item.get("rerank_score", 0.0), item["metadata_score"]),
+                reverse=True,
+            )
+            top = rerank_pool + top[config.RERANK_CANDIDATE_LIMIT :]
+
+        return self.dedupe_and_rerank_matches(top, limit)
 
     @staticmethod
     def format_source_error(error: Exception) -> str:
