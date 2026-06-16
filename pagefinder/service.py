@@ -24,7 +24,15 @@ from bs4 import BeautifulSoup
 from pagefinder import config
 from pagefinder.sources import ConfluenceClient, PageSnapshot
 from pagefinder.store import PagefinderStore
-from pagefinder.utils import collapse_whitespace, is_vietnamese, normalize_text, tokenize, utc_now
+from pagefinder.utils import (
+    collapse_whitespace,
+    content_tokens,
+    fold_accents,
+    is_vietnamese,
+    normalize_text,
+    tokenize,
+    utc_now,
+)
 
 
 class PagefinderService:
@@ -426,24 +434,32 @@ class PagefinderService:
         query_variants: list[str],
         variant_vectors: list[list[float]],
     ) -> dict[str, float]:
+        # Raw tokens (digits intact) for numeric matching; content tokens (accent-folded,
+        # stopwords removed) for the lexical signal so function words don't inflate it and
+        # folded Vietnamese can match the corpus.
         query_tokens = tokenize(query)
+        kw_query_tokens = content_tokens(query)
         semantic_score = max(self.cosine_similarity(vector, chunk["embedding"]) for vector in variant_vectors)
 
         normalized_title = chunk.get("normalized_title") or normalize_text(chunk["title"])
         normalized_heading = chunk.get("normalized_heading") or normalize_text(chunk["heading"])
         normalized_text = chunk.get("normalized_text") or normalize_text(chunk["text"])
-        title_tokens = set(normalized_title.split())
-        heading_tokens = set(normalized_heading.split())
-        chunk_tokens = chunk.get("tokens") or tokenize(chunk["text"])
+        folded_text = fold_accents(normalized_text)
+        title_tokens = {fold_accents(token) for token in normalized_title.split()}
+        heading_tokens = {fold_accents(token) for token in normalized_heading.split()}
+        chunk_tokens = [fold_accents(token) for token in (chunk.get("tokens") or tokenize(chunk["text"]))]
         text_tokens = set(chunk_tokens)
         text_token_counts = Counter(chunk_tokens)
 
-        title_overlap = self.keyword_overlap_score(query_tokens, title_tokens)
-        heading_overlap = self.keyword_overlap_score(query_tokens, heading_tokens)
-        text_overlap = self.keyword_overlap_score(query_tokens, text_tokens)
-        text_recall = self.lexical_recall_score(query_tokens, text_token_counts)
-        text_density = self.lexical_density_score(query_tokens, text_token_counts)
-        phrase_score = max(self.phrase_match_score(normalize_text(variant), normalized_text) for variant in query_variants)
+        title_overlap = self.keyword_overlap_score(kw_query_tokens, title_tokens)
+        heading_overlap = self.keyword_overlap_score(kw_query_tokens, heading_tokens)
+        text_overlap = self.keyword_overlap_score(kw_query_tokens, text_tokens)
+        text_recall = self.lexical_recall_score(kw_query_tokens, text_token_counts)
+        text_density = self.lexical_density_score(kw_query_tokens, text_token_counts)
+        phrase_score = max(
+            self.phrase_match_score(fold_accents(normalize_text(variant)), folded_text)
+            for variant in query_variants
+        )
         page_id_boost = 1.0 if chunk["page_id"] in query else 0.0
         numeric_boost = self.numeric_token_boost(query_tokens, text_tokens | heading_tokens | title_tokens)
 
@@ -461,7 +477,9 @@ class PagefinderService:
             + (0.20 * numeric_boost)
             + (0.20 * page_id_boost)
         )
-        final_score = (0.42 * semantic_score) + (0.38 * keyword_score) + (0.20 * metadata_boost)
+        # Real semantic embeddings are now the strongest signal, so they dominate; keyword
+        # and metadata act as tiebreakers (was 0.42/0.38/0.20 when embeddings were a hash).
+        final_score = (0.65 * semantic_score) + (0.25 * keyword_score) + (0.10 * metadata_boost)
 
         return {
             "semantic": semantic_score,

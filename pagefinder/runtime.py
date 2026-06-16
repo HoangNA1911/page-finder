@@ -466,20 +466,38 @@ def _search_documents_text(message: str) -> str:
     handler fast-path so 'find documents about X' never lets the LLM pad, drop, or
     hallucinate entries (e.g. inventing 'Test Page' from conversation history)."""
     vi = is_vietnamese(message)
+    # Retrieve more chunks than we display: results cluster on a few pages (and some get
+    # dropped as empty), so over-fetch and dedupe down to DISTINCT pages to fill the list.
+    want_pages = max(config.MAX_RESULTS, 5)
     try:
-        matches = service.search_chunks(message, config.MAX_RESULTS)
+        matches = service.search_chunks(message, want_pages * 4)
     except Exception as error:
         return service.format_source_error(error)
+    # Collapse to distinct pages (keeping each page's best-scoring chunk), skipping
+    # placeholder/near-empty pages (e.g. a "Test Page" whose body is just "Test").
     seen: set[str] = set()
-    lines: list[str] = []
+    pages: list[dict] = []
     for match in matches:
         if match["page_id"] in seen:
             continue
+        if len(" ".join((match.get("text") or "").split())) < 25:
+            continue
         seen.add(match["page_id"])
-        label = (match["title"] or "").replace("[", "(").replace("]", ")")
-        excerpt = _clean_excerpt(match.get("text") or "")
-        head = f"[{label}]({match['url']})" if match.get("url") else label
-        lines.append(f"- {head} — {excerpt}" if excerpt else f"- {head}")
+        pages.append(match)
+    # Relevance floor relative to the top hit: drop weak filler (e.g. an off-topic
+    # "Meeting notes" page that only matches on baseline semantic noise) instead of
+    # padding to a fixed count. Always keep at least the best match.
+    lines: list[str] = []
+    if pages:
+        top_score = pages[0]["score"]
+        floor = max(0.30, 0.70 * top_score)
+        for rank, match in enumerate(pages[:want_pages]):
+            if rank > 0 and match["score"] < floor:
+                break
+            label = (match["title"] or "").replace("[", "(").replace("]", ")")
+            excerpt = _clean_excerpt(match.get("text") or "")
+            head = f"[{label}]({match['url']})" if match.get("url") else label
+            lines.append(f"- {head} — {excerpt}" if excerpt else f"- {head}")
     if not lines:
         return (
             "Không tìm thấy tài liệu nào phù hợp trong hệ thống."

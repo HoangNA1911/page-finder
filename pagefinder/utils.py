@@ -67,6 +67,31 @@ def extract_page_ids_from_text(value: str) -> list[str]:
     return re.findall(r"\b\d{4,}\b", value)
 
 
+# Common function words that carry no topical signal. Kept accent-folded so the filter
+# works on folded Vietnamese too. Without this, words like "what/is/the" or "của/là/và"
+# match almost every chunk and inflate the keyword score for off-topic results.
+_STOPWORDS = {
+    # English
+    "the", "a", "an", "of", "to", "in", "on", "for", "and", "or", "is", "are", "be",
+    "what", "which", "how", "why", "who", "do", "does", "with", "about", "this", "that",
+    "it", "as", "at", "by", "from", "i", "you", "we", "can", "will", "me", "my",
+    # Vietnamese (accent-folded)
+    "la", "cua", "va", "co", "cho", "nhung", "mot", "cac", "nay", "do", "ve", "trong",
+    "thi", "ma", "voi", "khong", "duoc", "den", "tai", "lieu", "gi", "nao", "minh",
+    "ban", "toi", "the", "ra", "sao", "lam",
+}
+
+
+def content_tokens(value: str) -> list[str]:
+    """Tokens for keyword scoring: accent-folded and stopword-stripped, so the lexical
+    signal reflects topical words only (and folded Vietnamese can match)."""
+    out = []
+    for token in tokenize(fold_accents(value)):
+        if len(token) > 1 and token not in _STOPWORDS:
+            out.append(token)
+    return out
+
+
 def looks_like_summary_request(message: str) -> bool:
     lowered = message.lower()
     keywords = [
