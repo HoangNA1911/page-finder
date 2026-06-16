@@ -506,6 +506,9 @@
     const bubble = addMessage("assistant", "", false);
     bubble.innerHTML = '<span class="pf-dot-typing"><span></span><span></span><span></span></span>';
     pendingBubble = bubble;
+    // Clear timestamp while loading; stamp it only when the real reply arrives.
+    const timeEl = bubble.closest(".pf-msg").querySelector(".pf-time");
+    if (timeEl) timeEl.textContent = "";
 
     chrome.runtime.sendMessage(
       { type: "pagefinder:invoke", id: reqId, message: trimmed, userId: id.userId, sessionId: id.sessionId },
@@ -524,6 +527,9 @@
           // Strip the agent's no-diacritics "Tom tat noi dung page <id>:" prefix line.
           const cleaned = (resp.response || "(empty)").replace(/^\s*Tom tat noi dung page \d+:\s*/i, "");
           bubble.innerHTML = renderMarkdown(cleaned);
+        }
+        if (timeEl && !(resp && resp.aborted)) {
+          timeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         }
         messagesEl.scrollTop = messagesEl.scrollHeight;
         setBusy(false);

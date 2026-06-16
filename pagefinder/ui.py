@@ -1032,6 +1032,9 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         const bubble = addMessage("assistant", "");
         bubble.classList.add("loading");
         bubble.innerHTML = '<span class="dot-typing"><span></span><span></span><span></span></span>';
+        // Clear the timestamp while loading; stamp it only when the real reply arrives.
+        const timeEl = bubble.closest(".message").querySelector(".message-time");
+        if (timeEl) timeEl.textContent = "";
 
         const controller = new AbortController();
         pendingController = controller;
@@ -1049,12 +1052,14 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
           const payload = await response.json();
           bubble.classList.remove("loading");
           bubble.innerHTML = renderMarkdown(payload.response || payload.error || "No response returned.");
+          if (timeEl) timeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         } catch (error) {
           if (error.name === "AbortError") {
             (bubble.closest(".message") || bubble).remove();
           } else {
             bubble.classList.remove("loading");
             bubble.textContent = "Could not reach /invocations. Check that the runtime is running and the API is accessible.";
+            if (timeEl) timeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           }
         } finally {
           if (pendingController === controller) pendingController = null;
