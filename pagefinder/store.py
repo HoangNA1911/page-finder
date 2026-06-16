@@ -324,6 +324,17 @@ class PagefinderStore:
         finally:
             connection.close()
 
+    def list_pages(self, limit: int = 500) -> list[sqlite3.Row]:
+        """Return every indexed page (id, title, url) sorted by title."""
+        connection = self._connect()
+        try:
+            return connection.execute(
+                "SELECT page_id, title, url FROM pages ORDER BY title COLLATE NOCASE LIMIT ?",
+                (limit,),
+            ).fetchall()
+        finally:
+            connection.close()
+
     def knn_chunk_rowids(self, query_vector: list[float], k: int) -> list[int]:
         connection = self._connect()
         try:

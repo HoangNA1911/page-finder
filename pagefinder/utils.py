@@ -31,5 +31,9 @@ def extract_page_ids_from_text(value: str) -> list[str]:
 
 def looks_like_summary_request(message: str) -> bool:
     lowered = message.lower()
-    keywords = ["tóm tắt", "tom tat", "summary", "nội dung", "noi dung"]
+    keywords = [
+        "tóm tắt", "tom tat", "tóm lược", "tom luoc", "nội dung", "noi dung",
+        "summar",  # summary / summarize / summarise
+        "tl;dr", "tldr", "recap", "overview",
+    ]
     return any(keyword in lowered for keyword in keywords)

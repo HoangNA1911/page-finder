@@ -490,6 +490,16 @@ class PagefinderService:
         chunks = page.get("chunks", [])[:3]
         return "\n\n".join(f"[{chunk['heading']}]\nURL: {page['url']}\n{chunk['text'][:900]}" for chunk in chunks)
 
+    def fetch_page_for_summary(self, page_id: str) -> tuple[str, str, str]:
+        """Fetch a page live from Confluence and return (title, url, plain_text).
+
+        Used by the summary path so it works on the full, untruncated content of any
+        page the service account can access -- not just pages already in the index.
+        """
+        snapshot = self.confluence_client.fetch_page(page_id)
+        text = " ".join(BeautifulSoup(snapshot.body, "html.parser").get_text(" ", strip=True).split())
+        return snapshot.title, snapshot.url, text
+
     def check_document_updates_impl(self, actor_id: str, since: str | None) -> str:
         """Report document changes recorded since the user last used the system.
 

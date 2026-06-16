@@ -331,6 +331,23 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
 
       .bubble.md strong { color: #0c2c28; font-weight: 600; }
 
+      .bubble.md table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 8px 0;
+        font-size: 0.9em;
+        display: block;
+        overflow-x: auto;
+      }
+      .bubble.md th,
+      .bubble.md td {
+        border: 1px solid var(--border);
+        padding: 6px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .bubble.md th { background: var(--messages-bg); font-weight: 600; }
+
       .bubble.md a {
         color: var(--accent);
         text-decoration: underline;
@@ -485,6 +502,31 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         0%   { content: "."; }
         33%  { content: ".."; }
         66%  { content: "..."; }
+      }
+
+      .bubble.loading {
+        display: inline-flex;
+        align-items: center;
+        align-self: flex-start;
+        min-height: 1.2em;
+      }
+      .dot-typing {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .dot-typing span {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        animation: dotbounce 1.3s infinite ease-in-out both;
+      }
+      .dot-typing span:nth-child(2) { animation-delay: 0.16s; }
+      .dot-typing span:nth-child(3) { animation-delay: 0.32s; }
+      @keyframes dotbounce {
+        0%, 70%, 100% { transform: translateY(0); opacity: 0.35; }
+        35% { transform: translateY(-5px); opacity: 1; }
       }
 
       .resizer {
@@ -725,6 +767,15 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         function closeList() {
           if (listType) { html += "</" + listType + ">"; listType = null; }
         }
+        function isTableSep(s) {
+          return s.indexOf("|") !== -1 && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(s);
+        }
+        function splitRow(s) {
+          let t = s.trim();
+          if (t.charAt(0) === "|") t = t.slice(1);
+          if (t.charAt(t.length - 1) === "|") t = t.slice(0, -1);
+          return t.split("|").map(function (c) { return c.trim(); });
+        }
 
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
@@ -734,6 +785,22 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
             i++;
             while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
             html += "<pre><code>" + code.join("\n") + "</code></pre>";
+            continue;
+          }
+          if (line.indexOf("|") !== -1 && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+            flushPara(); closeList();
+            let t = "<table><thead><tr>";
+            for (const c of splitRow(line)) t += "<th>" + renderInline(c) + "</th>";
+            t += "</tr></thead><tbody>";
+            i += 2;
+            while (i < lines.length && lines[i].indexOf("|") !== -1 && !/^\s*$/.test(lines[i])) {
+              t += "<tr>";
+              for (const c of splitRow(lines[i])) t += "<td>" + renderInline(c) + "</td>";
+              t += "</tr>";
+              i++;
+            }
+            i--;
+            html += t + "</tbody></table>";
             continue;
           }
           if (/^\s*$/.test(line)) { flushPara(); closeList(); continue; }
@@ -814,8 +881,8 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
         setBusy(true);
 
         const bubble = addMessage("assistant", "");
-        bubble.textContent = "Đang trả lời";
-        bubble.classList.add("typing");
+        bubble.classList.add("loading");
+        bubble.innerHTML = '<span class="dot-typing"><span></span><span></span><span></span></span>';
 
         try {
           const response = await fetch("/invocations", {
@@ -828,10 +895,10 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
             body: JSON.stringify({ message: trimmed }),
           });
           const payload = await response.json();
-          bubble.classList.remove("typing");
+          bubble.classList.remove("loading");
           bubble.innerHTML = renderMarkdown(payload.response || payload.error || "No response returned.");
         } catch (error) {
-          bubble.classList.remove("typing");
+          bubble.classList.remove("loading");
           bubble.textContent = "Could not reach /invocations. Check that the runtime is running and the API is accessible.";
         } finally {
           setBusy(false);

@@ -145,13 +145,22 @@
       padding: 10px 12px; border-radius: 10px; overflow-x: auto; margin: 6px 0;
     }
     .pf-bubble.md pre code { background: transparent; padding: 0; }
+    .pf-bubble.md table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 0.88em; display: block; overflow-x: auto; }
+    .pf-bubble.md th, .pf-bubble.md td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; vertical-align: top; }
+    .pf-bubble.md th { background: var(--messages-bg); font-weight: 600; }
 
-    .typing::after {
-      content: "..."; display: inline-block; width: 1.3em; text-align: left;
-      white-space: nowrap; overflow: hidden; vertical-align: bottom;
-      animation: pfdots 1.2s steps(1, end) infinite;
+    .pf-bubble:has(.pf-dot-typing) { display: inline-flex; align-items: center; align-self: flex-start; min-height: 1.2em; }
+    .pf-dot-typing { display: inline-flex; align-items: center; gap: 5px; }
+    .pf-dot-typing span {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--muted);
+      animation: pfbounce 1.3s infinite ease-in-out both;
     }
-    @keyframes pfdots { 0% { content: "."; } 33% { content: ".."; } 66% { content: "..."; } }
+    .pf-dot-typing span:nth-child(2) { animation-delay: 0.16s; }
+    .pf-dot-typing span:nth-child(3) { animation-delay: 0.32s; }
+    @keyframes pfbounce {
+      0%, 70%, 100% { transform: translateY(0); opacity: 0.35; }
+      35% { transform: translateY(-5px); opacity: 1; }
+    }
 
     .pf-suggest { background: var(--messages-bg); }
     .pf-suggest-toggle {
@@ -233,36 +242,75 @@
     let html = "";
     let listType = null;
     let para = [];
-    let inCode = false;
-    let code = [];
 
     function flushPara() {
       if (para.length) { html += "<p>" + renderInline(para.join("<br>")) + "</p>"; para = []; }
     }
-    function flushList() {
+    function closeList() {
       if (listType) { html += "</" + listType + ">"; listType = null; }
     }
-    for (const raw of lines) {
-      const line = raw;
-      if (/^```/.test(line.trim())) {
-        if (inCode) { html += "<pre><code>" + code.join("\n") + "</code></pre>"; code = []; inCode = false; }
-        else { flushPara(); flushList(); inCode = true; }
+    function isTableSep(s) {
+      return s.indexOf("|") !== -1 && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(s);
+    }
+    function splitRow(s) {
+      let t = s.trim();
+      if (t.charAt(0) === "|") t = t.slice(1);
+      if (t.charAt(t.length - 1) === "|") t = t.slice(0, -1);
+      return t.split("|").map(function (c) { return c.trim(); });
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*```/.test(line)) {
+        flushPara(); closeList();
+        const code = [];
+        i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) { code.push(lines[i]); i++; }
+        html += "<pre><code>" + code.join("\n") + "</code></pre>";
         continue;
       }
-      if (inCode) { code.push(line); continue; }
-
-      const h = line.match(/^(#{1,4})\s+(.*)$/);
-      const ul = line.match(/^\s*[-*]\s+(.*)$/);
-      const ol = line.match(/^\s*\d+\.\s+(.*)$/);
-
-      if (h) { flushPara(); flushList(); const lvl = h[1].length; html += "<h" + lvl + ">" + renderInline(h[2]) + "</h" + lvl + ">"; }
-      else if (ul) { flushPara(); if (listType !== "ul") { flushList(); listType = "ul"; html += "<ul>"; } html += "<li>" + renderInline(ul[1]) + "</li>"; }
-      else if (ol) { flushPara(); if (listType !== "ol") { flushList(); listType = "ol"; html += "<ol>"; } html += "<li>" + renderInline(ol[1]) + "</li>"; }
-      else if (line.trim() === "") { flushPara(); flushList(); }
-      else { para.push(line); }
+      if (line.indexOf("|") !== -1 && i + 1 < lines.length && isTableSep(lines[i + 1])) {
+        flushPara(); closeList();
+        let t = "<table><thead><tr>";
+        for (const c of splitRow(line)) t += "<th>" + renderInline(c) + "</th>";
+        t += "</tr></thead><tbody>";
+        i += 2;
+        while (i < lines.length && lines[i].indexOf("|") !== -1 && !/^\s*$/.test(lines[i])) {
+          t += "<tr>";
+          for (const c of splitRow(lines[i])) t += "<td>" + renderInline(c) + "</td>";
+          t += "</tr>";
+          i++;
+        }
+        i--;
+        html += t + "</tbody></table>";
+        continue;
+      }
+      if (/^\s*$/.test(line)) { flushPara(); closeList(); continue; }
+      const heading = line.match(/^\s*(#{1,6})\s+(.*)$/);
+      if (heading) {
+        flushPara(); closeList();
+        const level = heading[1].length;
+        html += "<h" + level + ">" + renderInline(heading[2].trim()) + "</h" + level + ">";
+        continue;
+      }
+      const unordered = line.match(/^\s*[-*+]\s+(.*)$/);
+      if (unordered) {
+        flushPara();
+        if (listType !== "ul") { closeList(); html += "<ul>"; listType = "ul"; }
+        html += "<li>" + renderInline(unordered[1]) + "</li>";
+        continue;
+      }
+      const ordered = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (ordered) {
+        flushPara();
+        if (listType !== "ol") { closeList(); html += "<ol>"; listType = "ol"; }
+        html += "<li>" + renderInline(ordered[1]) + "</li>";
+        continue;
+      }
+      closeList();
+      para.push(line.trim());
     }
-    if (inCode) html += "<pre><code>" + code.join("\n") + "</code></pre>";
-    flushPara(); flushList();
+    flushPara(); closeList();
     return html;
   }
 
@@ -394,13 +442,12 @@
     inputEl.style.height = "40px";
     setBusy(true);
 
-    const bubble = addMessage("assistant", "Đang trả lời", false);
-    bubble.classList.add("typing");
+    const bubble = addMessage("assistant", "", false);
+    bubble.innerHTML = '<span class="pf-dot-typing"><span></span><span></span><span></span></span>';
 
     chrome.runtime.sendMessage(
       { type: "pagefinder:invoke", message: trimmed, userId: id.userId, sessionId: id.sessionId },
       function (resp) {
-        bubble.classList.remove("typing");
         if (chrome.runtime.lastError) {
           bubble.textContent = "Extension connection error: " + chrome.runtime.lastError.message;
         } else if (!resp || !resp.ok) {

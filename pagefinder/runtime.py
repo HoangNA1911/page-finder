@@ -207,10 +207,28 @@ def list_recent_reads(limit: int = 10) -> str:
     )
 
 
+@tool
+def list_documents() -> str:
+    """List every document currently in the indexed set (title + page_id).
+
+    Use this when the user asks to list / show / enumerate the available documents
+    WITHOUT giving a search keyword (e.g. "list all documents", "what docs do you have").
+    """
+    try:
+        rows = service.store.list_pages()
+    except Exception as error:
+        return service.format_source_error(error)
+    if not rows:
+        return "No documents are indexed yet. Ask me to index/sync the Confluence pages first."
+    lines = [f"- {row['title']} (page_id={row['page_id']})" for row in rows]
+    return f"{len(rows)} indexed document(s):\n" + "\n".join(lines)
+
+
 agent = create_agent(
     llm,
     tools=[
         search_documents,
+        list_documents,
         read_document,
         check_document_updates,
         index_documents,
@@ -224,7 +242,14 @@ agent = create_agent(
     system_prompt=(
         "You are Pagefinder, a document assistant with RAG over a fixed indexed document set. "
         "Always prefer searching indexed documents before answering knowledge questions. "
-        "When the user asks about document content, use search_documents first and cite page title, page_id, and URL in the answer. "
+        "When the user asks about document content, use search_documents first and cite the page title as a markdown "
+        "link to its URL. "
+        "When the user asks to list/show all available documents without a search keyword, use list_documents and "
+        "present the actual document titles returned by the tool. Do NOT collapse them into invented topic categories "
+        "or claim what the corpus is 'mostly about' — just list the real titles (you may show the first ~30 and note "
+        "the total count if there are many). "
+        "NEVER show page_id values to the user — they are internal identifiers only. Use page_id internally to call "
+        "tools, but in your answer reference documents by their title (linked to the URL) instead. "
         "When the user asks to inspect one document in depth, use read_document. "
         "When the user asks whether docs changed, use check_document_updates only; it reads the local changelog and must not trigger a Confluence sync. "
         "When the user explicitly asks the system to index, re-index, or refresh the documents, use index_documents (incremental: only pages whose version changed). "
@@ -264,19 +289,46 @@ def handler(payload: dict, context: RequestContext) -> dict:
     try:
         requested_page_ids = extract_page_ids_from_text(message)
         if requested_page_ids:
+            page_id = requested_page_ids[0]
+
+            if looks_like_summary_request(message):
+                try:
+                    title, url, text = service.fetch_page_for_summary(page_id)
+                except Exception as exc:  # network / not found / no access
+                    return {
+                        "status": "success",
+                        "response": f"Could not fetch page {page_id}: {exc}",
+                        "timestamp": utc_now(),
+                    }
+                summary = llm.invoke(
+                    [
+                        (
+                            "system",
+                            "You summarize a Confluence page for the user. Reply in the SAME "
+                            "language as the user's request. Be concise, use markdown (short "
+                            "headings and bullet points), keep the key points, and do not invent "
+                            "content that is not in the page.",
+                        ),
+                        (
+                            "human",
+                            f"User request:\n{message}\n\nPage title: {title}\n\n"
+                            f"Page content:\n{text[:16000]}",
+                        ),
+                    ]
+                ).content
+                return {
+                    "status": "success",
+                    "response": f"{summary}\n\n{url}",
+                    "timestamp": utc_now(),
+                }
+
             page_content = service.read_document_impl(
-                requested_page_ids[0],
+                page_id,
                 message,
                 actor_id=actor_id,
             )
             if page_content.startswith("Could not read") or page_content.startswith("Page "):
                 return {"status": "success", "response": page_content, "timestamp": utc_now()}
-            if looks_like_summary_request(message):
-                return {
-                    "status": "success",
-                    "response": f"Tom tat noi dung page {requested_page_ids[0]}:\n\n{page_content}",
-                    "timestamp": utc_now(),
-                }
             return {"status": "success", "response": page_content, "timestamp": utc_now()}
 
         runtime_config = {
