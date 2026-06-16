@@ -90,8 +90,8 @@ class PagefinderStore:
                 """
             )
             # Changelog of document version changes, populated during sync. Read
-            # back per-user (filtered by the user's last_seen_at) to answer
-            # "what changed since I last used the system?".
+            # back per-user (filtered by the user's last_update_check_at) to answer
+            # "what changed since I last checked for updates?".
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS document_updates (
@@ -179,6 +179,9 @@ class PagefinderStore:
             self._add_column_if_missing(connection, "pages", "content_text", "TEXT")
             self._add_column_if_missing(connection, "document_updates", "diff_summary", "TEXT")
             self._add_column_if_missing(connection, "document_updates", "change_summary", "TEXT")
+            # Per-user "last time the user checked for document updates" — advanced
+            # only when check_document_updates runs, separate from last_seen_at.
+            self._add_column_if_missing(connection, "user_activity", "last_update_check_at", "TEXT")
 
             connection.commit()
         finally:
@@ -524,14 +527,47 @@ class PagefinderStore:
             connection.close()
 
     def set_last_seen(self, actor_id: str, timestamp: str | None = None) -> None:
+        # Upsert (not INSERT OR REPLACE) so we update last_seen_at in place without
+        # wiping the row's last_update_check_at column.
         connection = self._connect()
         try:
             connection.execute(
                 """
-                INSERT OR REPLACE INTO user_activity (actor_id, last_seen_at)
+                INSERT INTO user_activity (actor_id, last_seen_at)
                 VALUES (?, ?)
+                ON CONFLICT(actor_id) DO UPDATE SET last_seen_at = excluded.last_seen_at
                 """,
                 (actor_id, timestamp or utc_now()),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def get_last_update_check(self, actor_id: str) -> str | None:
+        """Timestamp of the user's previous document-update check (None if never)."""
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT last_update_check_at FROM user_activity WHERE actor_id = ?",
+                (actor_id,),
+            ).fetchone()
+            return row["last_update_check_at"] if row and row["last_update_check_at"] else None
+        finally:
+            connection.close()
+
+    def set_last_update_check(self, actor_id: str, timestamp: str | None = None) -> None:
+        # Upsert: on first insert seed last_seen_at too (it is NOT NULL); on conflict
+        # touch only last_update_check_at, leaving last_seen_at untouched.
+        connection = self._connect()
+        try:
+            now = timestamp or utc_now()
+            connection.execute(
+                """
+                INSERT INTO user_activity (actor_id, last_seen_at, last_update_check_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(actor_id) DO UPDATE SET last_update_check_at = excluded.last_update_check_at
+                """,
+                (actor_id, now, now),
             )
             connection.commit()
         finally:

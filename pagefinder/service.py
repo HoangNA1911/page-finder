@@ -611,31 +611,37 @@ class PagefinderService:
         return head + "\n\n" + diff
 
     def check_document_updates_impl(self, actor_id: str, since: str | None, user_request: str = "") -> str:
-        """Report document changes recorded since the user last used the system.
+        """Report document changes recorded since the user last checked for updates.
 
-        Pure local lookup: compares the user's ``last_seen`` (``since``) against the
-        document version changes already recorded in the local changelog. It does NOT
-        re-fetch or sync from Confluence — keeping the index current is the background
-        sync job's responsibility — so this stays fast and adds no Confluence latency.
-        ``since`` is the user's previous last-seen timestamp, captured before the
-        current request.
+        Pure local lookup: compares the user's previous update-check timestamp
+        (``since``) against the document version changes already recorded in the local
+        changelog. It does NOT re-fetch or sync from Confluence — keeping the index
+        current is the background sync job's responsibility — so this stays fast and
+        adds no Confluence latency. ``since`` is the user's previous update-check
+        timestamp, captured before the current request.
+
+        Advancing the user's update-check timestamp to now happens here (regardless of
+        outcome), so the next check reports everything changed since this check.
         """
         vi = is_vietnamese(user_request)
+        # Mark that the user has now checked for updates. ``since`` was snapshotted by
+        # the caller beforehand, so advancing here does not affect this call's result.
+        self.store.set_last_update_check(actor_id)
         if not since:
             return (
-                "Đây có vẻ là phiên đầu tiên của bạn nên chưa có lần truy cập trước để so sánh. "
+                "Đây có vẻ là lần đầu bạn kiểm tra cập nhật nên chưa có mốc trước để so sánh. "
                 "Mình sẽ theo dõi các cập nhật tài liệu từ bây giờ."
                 if vi else
-                "This looks like your first session, so there is no earlier visit to "
-                "compare against yet. I'll track document updates from now on."
+                "This looks like your first time checking for updates, so there is no "
+                "earlier check to compare against yet. I'll track document updates from now on."
             )
 
         rows = self.store.get_updates_since(since)
         if not rows:
             return (
-                "Không có tài liệu nào thay đổi kể từ lần bạn dùng gần nhất."
+                "Không có tài liệu nào thay đổi kể từ lần bạn kiểm tra cập nhật gần nhất."
                 if vi else
-                "No documents have changed since you last used the system."
+                "No documents have changed since you last checked for updates."
             )
 
         # Collapse multiple changes to the same page into its most recent entry,

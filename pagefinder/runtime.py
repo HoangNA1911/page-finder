@@ -72,9 +72,9 @@ def get_actor_id() -> str:
     return get_configurable().get("actor_id", "shared-user")
 
 
-def get_last_seen_before() -> str | None:
-    """The user's last-seen timestamp captured before the current request started."""
-    return get_configurable().get("last_seen_before")
+def get_last_update_check_before() -> str | None:
+    """The user's previous update-check timestamp, captured before this request started."""
+    return get_configurable().get("last_update_check_before")
 
 
 def get_user_message() -> str:
@@ -156,13 +156,15 @@ def index_documents() -> str:
 
 @tool
 def check_document_updates() -> str:
-    """Report which documents changed since the current user last used the system.
+    """Report which documents changed since the current user last checked for updates.
 
     The result may include a ```diff fenced block per changed page (added/removed
     lines). Present that block verbatim — do not rewrite or summarize away the diff.
     """
     try:
-        return service.check_document_updates_impl(get_actor_id(), get_last_seen_before(), get_user_message())
+        return service.check_document_updates_impl(
+            get_actor_id(), get_last_update_check_before(), get_user_message()
+        )
     except Exception as error:
         return service.format_source_error(error)
 
@@ -382,10 +384,12 @@ def handler(payload: dict, context: RequestContext) -> dict:
         return {"status": "error", "error": "Payload must include a non-empty 'message'."}
 
     actor_id = context.user_id or "shared-user"
-    # Snapshot the user's previous last-seen timestamp BEFORE serving this request, then
-    # advance it once the request is handled. "What's new?" answers against this snapshot,
-    # so it reports everything changed since the user's previous visit.
-    last_seen_before = service.store.get_last_seen(actor_id)
+    # Snapshot the user's previous update-check timestamp BEFORE serving this request.
+    # "What's new?" answers against this snapshot and advances the timestamp itself (in
+    # check_document_updates_impl), so it reports everything changed since the user's
+    # previous update check — not since their last general visit. last_seen_at is still
+    # advanced every request below as a record of general activity.
+    last_update_check_before = service.store.get_last_update_check(actor_id)
     try:
         requested_page_ids = extract_page_ids_from_text(message)
         if requested_page_ids:
@@ -438,7 +442,7 @@ def handler(payload: dict, context: RequestContext) -> dict:
             return {"status": "success", "response": _list_documents_text(message), "timestamp": utc_now()}
         if looks_like_whats_new_request(message):
             try:
-                whats_new = service.check_document_updates_impl(actor_id, last_seen_before, message)
+                whats_new = service.check_document_updates_impl(actor_id, last_update_check_before, message)
             except Exception as error:
                 whats_new = service.format_source_error(error)
             return {"status": "success", "response": whats_new, "timestamp": utc_now()}
@@ -447,7 +451,7 @@ def handler(payload: dict, context: RequestContext) -> dict:
             "configurable": {
                 "thread_id": context.session_id,
                 "actor_id": actor_id,
-                "last_seen_before": last_seen_before,
+                "last_update_check_before": last_update_check_before,
                 "user_message": message,
             }
         }

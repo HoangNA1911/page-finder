@@ -7,6 +7,11 @@ CHATBOT_UI_HTML = r"""<!DOCTYPE html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pagefinder</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%232ad4e0'/><stop offset='0.52' stop-color='%2313b5c4'/><stop offset='1' stop-color='%230c93a2'/></linearGradient></defs><rect x='4' y='4' width='56' height='56' rx='16' fill='url(%23g)'/><text x='32' y='45' font-family='Segoe UI,Arial,sans-serif' font-size='38' font-weight='700' text-anchor='middle' fill='%23ffffff'>P</text></svg>"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
