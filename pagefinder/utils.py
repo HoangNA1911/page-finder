@@ -87,6 +87,36 @@ _SEARCH_QUALIFIERS = ("ve", "about", "lien quan", "topic", "chu de", "regarding"
 _NON_DOC_TARGETS = ("ghi chu", "note", "lich su", "history", "da doc", "da xem", "da luu")
 
 
+# Words signalling the user wants to EXPLAIN/answer a content question, which must go
+# through the agent for synthesis — not the deterministic document-search list.
+_EXPLAIN_MARKERS = (
+    "the nao", "la gi", "ra sao", "giai thich", "vi sao", "tai sao", "cach ",
+    "how ", "what is", "what are", "why ", "explain", "huong dan", "lam sao",
+)
+# Verbs/markers that signal "find me documents about X" (a retrieval list, not Q&A).
+_DOC_SEARCH_MARKERS = (
+    "tim kiem", "tim tai lieu", "tim doc", "tim cac", "tim nhung", "tra cuu",
+    "search document", "search doc", "find document", "find doc", "document about",
+    "docs about", "tai lieu ve", "tai lieu lien quan", "tai lieu noi ve", "tai lieu nao ve",
+    "tai lieu hackathon", "co tai lieu nao ve",
+)
+
+
+def looks_like_doc_search_request(message: str) -> bool:
+    """True for an explicit 'find/search documents about X' intent (render a result list
+    deterministically), but NOT for content questions that need agent synthesis."""
+    folded = normalize_text(fold_accents(message))
+    padded = f" {folded} "
+    if any(m in padded for m in _EXPLAIN_MARKERS):
+        return False
+    if any(t in folded for t in _NON_DOC_TARGETS):  # notes / history go elsewhere
+        return False
+    if any(m in folded for m in _DOC_SEARCH_MARKERS):
+        return True
+    # "tài liệu <topic>" / "document <topic>" with a topic word after it.
+    return bool(re.match(r"^(tai lieu|document|doc)\s+\w", folded))
+
+
 def is_vietnamese(message: str) -> bool:
     """Heuristic: the message is Vietnamese if it has Vietnamese diacritics or uses
     common Vietnamese words. Used to pick the language of deterministic fast-path text."""

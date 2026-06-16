@@ -1,3 +1,5 @@
+import re
+
 from langchain.agents import create_agent
 from langchain.agents.middleware import before_model
 from langchain_core.messages import HumanMessage, RemoveMessage
@@ -20,6 +22,7 @@ from pagefinder.utils import (
     extract_page_ids_from_text,
     is_vietnamese,
     looks_like_list_request,
+    looks_like_doc_search_request,
     looks_like_list_notes_request,
     looks_like_summary_request,
     looks_like_whats_new_request,
@@ -436,6 +439,56 @@ def list_documents() -> str:
     return _list_documents_text(get_user_message())
 
 
+_BYLINE_RE = re.compile(
+    r"^.{0,40}?\d{1,2}\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\s*",
+    re.IGNORECASE,
+)
+
+
+def _clean_excerpt(text: str, limit: int = 160) -> str:
+    """Turn a raw chunk into a tidy one-line excerpt: collapse whitespace, drop a leading
+    'Author DD Month YYYY' byline, and cut at a sentence/word boundary."""
+    cleaned = " ".join(text.split())
+    cleaned = _BYLINE_RE.sub("", cleaned).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    window = cleaned[: limit + 40]
+    end = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+    if end >= 60:
+        return window[: end + 1]
+    cut = cleaned[:limit].rsplit(" ", 1)[0]
+    return cut + "…"
+
+
+def _search_documents_text(message: str) -> str:
+    """Render document-search results deterministically: one bullet per DISTINCT matching
+    page (title linked to URL, page_id hidden) with a grounded excerpt. Used by the
+    handler fast-path so 'find documents about X' never lets the LLM pad, drop, or
+    hallucinate entries (e.g. inventing 'Test Page' from conversation history)."""
+    vi = is_vietnamese(message)
+    try:
+        matches = service.search_chunks(message, config.MAX_RESULTS)
+    except Exception as error:
+        return service.format_source_error(error)
+    seen: set[str] = set()
+    lines: list[str] = []
+    for match in matches:
+        if match["page_id"] in seen:
+            continue
+        seen.add(match["page_id"])
+        label = (match["title"] or "").replace("[", "(").replace("]", ")")
+        excerpt = _clean_excerpt(match.get("text") or "")
+        head = f"[{label}]({match['url']})" if match.get("url") else label
+        lines.append(f"- {head} — {excerpt}" if excerpt else f"- {head}")
+    if not lines:
+        return (
+            "Không tìm thấy tài liệu nào phù hợp trong hệ thống."
+            if vi else "No matching documents found in the indexed set."
+        )
+    header = "Các tài liệu liên quan:" if vi else "Related documents:"
+    return header + "\n" + "\n".join(lines)
+
+
 # Keep only the last few user turns in the conversation thread. The agent's checkpointer
 # persists history per session_id, and replaying a long thread to the LLM every turn is
 # what made long-lived browser sessions take 1-2 min (vs ~30s for a fresh session). This
@@ -606,6 +659,8 @@ def handler(payload: dict, context: RequestContext) -> dict:
             return _success(whats_new)
         if looks_like_list_request(message):
             return _success(_list_documents_text(message))
+        if looks_like_doc_search_request(message):
+            return _success(_search_documents_text(message))
 
         runtime_config = {
             "configurable": {
