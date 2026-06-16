@@ -32,6 +32,11 @@ def get_actor_id() -> str:
     return get_configurable().get("actor_id", "shared-user")
 
 
+def get_last_seen_before() -> str | None:
+    """The user's last-seen timestamp captured before the current request started."""
+    return get_configurable().get("last_seen_before")
+
+
 def build_note_namespace(actor_id: str) -> str:
     """Dedicated long-term-memory namespace for per-user document notes."""
     return f"{build_namespace(config.MEMORY_STRATEGY_ID, actor_id)}/notes"
@@ -87,10 +92,28 @@ def sync_confluence_pages() -> str:
 
 
 @tool
-def check_document_updates() -> str:
-    """Check whether any configured Confluence pages changed since the last index."""
+def index_documents() -> str:
+    """Index documents on demand (incremental): fetch the configured Confluence pages and
+    reindex only those whose version changed since the last sync. Use this when the user
+    asks the system to index, refresh, or update the index. For a full forced rebuild of
+    every page regardless of version, use sync_confluence_pages instead."""
     try:
-        return service.check_document_updates_impl()
+        synced_pages = service.sync_pages(force=False)
+    except Exception as error:
+        return service.format_source_error(error)
+    if not synced_pages:
+        return "Index is already up to date; no pages needed reindexing."
+    return "\n".join(
+        f"- Indexed {page['title']} (page_id={page['page_id']}, version={page['version']})"
+        for page in synced_pages
+    )
+
+
+@tool
+def check_document_updates() -> str:
+    """Report which documents changed since the current user last used the system."""
+    try:
+        return service.check_document_updates_impl(get_actor_id(), get_last_seen_before())
     except Exception as error:
         return service.format_source_error(error)
 
@@ -190,6 +213,7 @@ agent = create_agent(
         search_documents,
         read_document,
         check_document_updates,
+        index_documents,
         sync_confluence_pages,
         add_document_note,
         list_document_notes,
@@ -202,7 +226,8 @@ agent = create_agent(
         "Always prefer searching indexed documents before answering knowledge questions. "
         "When the user asks about document content, use search_documents first and cite page title, page_id, and URL in the answer. "
         "When the user asks to inspect one document in depth, use read_document. "
-        "When the user asks whether docs changed, use check_document_updates and optionally sync_confluence_pages. "
+        "When the user asks whether docs changed, use check_document_updates only; it reads the local changelog and must not trigger a Confluence sync. "
+        "When the user explicitly asks the system to index, re-index, or refresh the documents, use index_documents (incremental: only pages whose version changed). "
         "When the user asks to save or review personal notes, use add_document_note or list_document_notes. "
         "Use list_recent_reads to recover what the user opened before. "
         "If the indexed corpus is insufficient, say that the scope is limited to the configured documents."
@@ -231,32 +256,41 @@ def handler(payload: dict, context: RequestContext) -> dict:
     if not message:
         return {"status": "error", "error": "Payload must include a non-empty 'message'."}
 
-    requested_page_ids = extract_page_ids_from_text(message)
-    if requested_page_ids:
-        page_content = service.read_document_impl(
-            requested_page_ids[0],
-            message,
-            actor_id=context.user_id or "shared-user",
-        )
-        if page_content.startswith("Could not read") or page_content.startswith("Page "):
+    actor_id = context.user_id or "shared-user"
+    # Snapshot the user's previous last-seen timestamp BEFORE serving this request, then
+    # advance it once the request is handled. "What's new?" answers against this snapshot,
+    # so it reports everything changed since the user's previous visit.
+    last_seen_before = service.store.get_last_seen(actor_id)
+    try:
+        requested_page_ids = extract_page_ids_from_text(message)
+        if requested_page_ids:
+            page_content = service.read_document_impl(
+                requested_page_ids[0],
+                message,
+                actor_id=actor_id,
+            )
+            if page_content.startswith("Could not read") or page_content.startswith("Page "):
+                return {"status": "success", "response": page_content, "timestamp": utc_now()}
+            if looks_like_summary_request(message):
+                return {
+                    "status": "success",
+                    "response": f"Tom tat noi dung page {requested_page_ids[0]}:\n\n{page_content}",
+                    "timestamp": utc_now(),
+                }
             return {"status": "success", "response": page_content, "timestamp": utc_now()}
-        if looks_like_summary_request(message):
-            return {
-                "status": "success",
-                "response": f"Tom tat noi dung page {requested_page_ids[0]}:\n\n{page_content}",
-                "timestamp": utc_now(),
-            }
-        return {"status": "success", "response": page_content, "timestamp": utc_now()}
 
-    runtime_config = {
-        "configurable": {
-            "thread_id": context.session_id,
-            "actor_id": context.user_id,
+        runtime_config = {
+            "configurable": {
+                "thread_id": context.session_id,
+                "actor_id": actor_id,
+                "last_seen_before": last_seen_before,
+            }
         }
-    }
-    result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=runtime_config)
-    ai_message = result["messages"][-1]
-    return {"status": "success", "response": ai_message.content, "timestamp": utc_now()}
+        result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=runtime_config)
+        ai_message = result["messages"][-1]
+        return {"status": "success", "response": ai_message.content, "timestamp": utc_now()}
+    finally:
+        service.store.set_last_seen(actor_id)
 
 
 @app.ping

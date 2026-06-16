@@ -230,23 +230,38 @@ class PagefinderService:
             )
             for page_id in page_ids:
                 stored_page = self.store.get_page(page_id)
-                snapshot = self.confluence_client.fetch_page(page_id)
+                # Cheap metadata probe first: only pull the full body when the page is
+                # new, its version moved, or the index schema changed.
+                meta = self.confluence_client.fetch_page_meta(page_id)
                 needs_reindex = (
                     force
                     or not stored_page
-                    or stored_page.get("version") != snapshot.version
+                    or stored_page.get("version") != meta.version
                     or stored_page.get("index_schema_version") != config.INDEX_SCHEMA_VERSION
                 )
                 if not needs_reindex:
                     self._log_index(
-                        f"Skipped page_id={page_id} title='{snapshot.title}' "
-                        f"(already at version={snapshot.version})."
+                        f"Skipped page_id={page_id} title='{meta.title}' "
+                        f"(already at version={meta.version})."
                     )
                     continue
                 reason = "forced" if force else ("new" if not stored_page else "version-changed")
+                snapshot = self.confluence_client.fetch_page(page_id)
                 page_payload = self.reindex_page(snapshot)
                 self.store.upsert_page(page_payload)
                 synced_pages.append(page_payload)
+                # Log a changelog entry only for genuine content changes (new page or
+                # version bump) — not for schema-version or forced re-indexes where the
+                # underlying content is unchanged, so the per-user "what's new" stays clean.
+                stored_version = stored_page.get("version") if stored_page else None
+                if stored_page is None:
+                    self.store.record_document_update(
+                        page_id, snapshot.title, None, snapshot.version, "new"
+                    )
+                elif stored_version != snapshot.version:
+                    self.store.record_document_update(
+                        page_id, snapshot.title, stored_version, snapshot.version, "updated"
+                    )
                 self._log_index(
                     f"Indexed page_id={page_id} title='{snapshot.title}' version={snapshot.version} "
                     f"chunks={len(page_payload['chunks'])} reason={reason}."
@@ -475,19 +490,39 @@ class PagefinderService:
         chunks = page.get("chunks", [])[:3]
         return "\n\n".join(f"[{chunk['heading']}]\nURL: {page['url']}\n{chunk['text'][:900]}" for chunk in chunks)
 
-    def check_document_updates_impl(self) -> str:
-        updates: list[str] = []
-        for page_id in self.target_page_ids():
-            current_snapshot = self.confluence_client.fetch_page(page_id)
-            indexed_page = self.store.get_page(page_id)
-            if not indexed_page:
-                updates.append(f"- {current_snapshot.title} is not indexed yet.")
-                continue
-            indexed_version = indexed_page.get("version")
-            if indexed_version != current_snapshot.version:
-                updates.append(
-                    f"- {current_snapshot.title} changed from version {indexed_version} to {current_snapshot.version}."
+    def check_document_updates_impl(self, actor_id: str, since: str | None) -> str:
+        """Report document changes recorded since the user last used the system.
+
+        Pure local lookup: compares the user's ``last_seen`` (``since``) against the
+        document version changes already recorded in the local changelog. It does NOT
+        re-fetch or sync from Confluence — keeping the index current is the background
+        sync job's responsibility — so this stays fast and adds no Confluence latency.
+        ``since`` is the user's previous last-seen timestamp, captured before the
+        current request.
+        """
+        if not since:
+            return (
+                "This looks like your first session, so there is no earlier visit to "
+                "compare against yet. I'll track document updates from now on."
+            )
+
+        rows = self.store.get_updates_since(since)
+        if not rows:
+            return "No documents have changed since you last used the system."
+
+        # Collapse multiple changes to the same page into its most recent entry.
+        latest_by_page: dict[str, Any] = {}
+        for row in rows:
+            latest_by_page[row["page_id"]] = row
+
+        lines: list[str] = []
+        for row in latest_by_page.values():
+            if row["change_type"] == "new":
+                lines.append(f"- {row['title']} (page_id={row['page_id']}) was added.")
+            else:
+                lines.append(
+                    f"- {row['title']} (page_id={row['page_id']}) was updated "
+                    f"(version {row['old_version']} → {row['new_version']})."
                 )
-        if not updates:
-            return "No updates detected for the configured Confluence pages."
-        return "\n".join(updates)
+        header = f"{len(lines)} document(s) changed since {since}:"
+        return "\n".join([header, *lines])

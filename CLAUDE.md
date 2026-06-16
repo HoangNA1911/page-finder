@@ -24,7 +24,7 @@ HTTP /invocations
     → sources.py   (ConfluenceClient)
 ```
 
-**`runtime.py`** — Wires the agent. Registers tools (`search_documents`, `read_document`, notes/history tools, optional memory tools), extracts `actor_id`/`thread_id` from the request, and runs the LangGraph agent. Short-circuits directly to `read_document_impl` if the request already specifies a `page_id`.
+**`runtime.py`** — Wires the agent. Registers tools (`search_documents`, `read_document`, `check_document_updates`, on-demand indexing tools, notes/history tools, optional memory tools), extracts `actor_id`/`thread_id` from the request, and runs the LangGraph agent. Short-circuits directly to `read_document_impl` if the request already specifies a `page_id`.
 
 **`service.py`** — The core logic. Three main responsibilities:
 1. **Indexing** (`sync_pages` → `reindex_page`): fetches pages, splits into chunks by heading/paragraph with overlap, computes embeddings, writes to the store. Each indexing run logs per page (`[pagefinder.index] ...`: sync start, indexed/skipped per page with chunk count, sync finished).
@@ -34,6 +34,11 @@ HTTP /invocations
 **`store.py`** — SQLite store in `.pagefinder/pagefinder.db`:
 - `pages` + `chunks` (chunk text/metadata) + `vec_chunks` (sqlite-vec KNN) + `chunks_fts` (FTS5), all sharing the same `rowid`, hold the searchable index.
 - `reading_history` holds per-user read history. **Per-user document notes are no longer stored here** — they live in AgentBase long-term memory (see `runtime.py`).
+- `document_updates` is a changelog: `sync_pages` appends one row when a page is newly indexed or its version changes (not for forced/schema-only reindexes). `user_activity` holds each user's `last_seen_at`.
+
+**"What's new?" flow** — `check_document_updates` is a **pure local lookup**: it reads the `document_updates` changelog filtered by the user's *previous* `last_seen_at` (snapshotted in `runtime.handler` before the request, passed via the `last_seen_before` configurable). It does **not** sync or re-fetch Confluence (no `ensure_index_ready`) — keeping the changelog current is the background sync job's job — so it adds no Confluence latency. The system prompt also forbids the agent from triggering a sync on these questions. `handler` advances `last_seen_at` to now at the end of every request, so the tool reports everything changed since the user's prior visit. Brand-new users (no `last_seen_at` row) get a "first session" message instead of a flood.
+
+**On-demand indexing** — `index_documents` runs an **incremental** sync (`sync_pages(force=False)`: probe version metadata, reindex only pages whose version changed); the agent calls it when the user asks to index/refresh the corpus. `sync_confluence_pages` runs a **full forced** rebuild (`sync_pages(force=True)`, every page regardless of version). Both are ungated (any user may invoke them) and serialize on `service.sync_lock`, so concurrent calls run sequentially rather than overlapping.
 
 **`runtime.py` notes** — `add_document_note` / `list_document_notes` persist notes in AgentBase Memory under the namespace `…/actors/{actor_id}/notes` (record text `page_id=… | title=… | <note>`). Both require `PAGEFINDER_ENABLE_AGENTBASE_MEMORY=true`; they return a disabled message otherwise.
 
@@ -56,5 +61,5 @@ All tunables are env vars with defaults in `config.py`. The search-relevant ones
 | `PAGEFINDER_CHUNK_MAX_CHARS` | 1200 | Max chars per chunk |
 | `PAGEFINDER_SEARCH_CANDIDATE_LIMIT` | 25 | Candidates before dedup |
 | `PAGEFINDER_MAX_RESULTS` | 5 | Results returned to caller |
-| `PAGEFINDER_AUTO_SYNC_ON_QUERY` | true | Sync before each query |
+| `PAGEFINDER_AUTO_SYNC_ON_QUERY` | false | Sync before each search query (off by default; `check_document_updates` never syncs regardless) |
 | `PAGEFINDER_BACKGROUND_SYNC_INTERVAL_SECONDS` | 300 | Polling interval |

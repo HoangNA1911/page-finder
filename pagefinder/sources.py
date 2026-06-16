@@ -18,6 +18,15 @@ class PageSnapshot:
     fetched_at: str
 
 
+@dataclass
+class PageMeta:
+    """Lightweight page metadata for change detection — no body fetched."""
+
+    page_id: str
+    title: str
+    version: int
+
+
 class ConfluenceClient:
     def __init__(self, base_url: str, email: str, api_token: str) -> None:
         self.base_url = self._normalize_base_url(base_url)
@@ -82,6 +91,22 @@ class ConfluenceClient:
             except ValueError:
                 return version_number
         return version_number
+
+    def fetch_page_meta(self, page_id: str) -> PageMeta:
+        """Fetch only the version/title (no body) for cheap change detection."""
+        response = self.session.get(
+            f"{self.base_url}/rest/api/content/{page_id}",
+            params={"expand": "version"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        version = self._resolve_version(payload.get("version", {}) or {})
+        return PageMeta(
+            page_id=str(payload["id"]),
+            title=payload["title"],
+            version=version,
+        )
 
     def fetch_page(self, page_id: str) -> PageSnapshot:
         response = self.session.get(

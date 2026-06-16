@@ -89,6 +89,34 @@ class PagefinderStore:
                 )
                 """
             )
+            # Changelog of document version changes, populated during sync. Read
+            # back per-user (filtered by the user's last_seen_at) to answer
+            # "what changed since I last used the system?".
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS document_updates (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    page_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    old_version INTEGER,
+                    new_version INTEGER,
+                    change_type TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_document_updates_at ON document_updates(updated_at)"
+            )
+            # Per-user last-activity timestamp ("last time using the system").
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_activity (
+                    actor_id TEXT PRIMARY KEY,
+                    last_seen_at TEXT NOT NULL
+                )
+                """
+            )
 
             stored_dim = connection.execute(
                 "SELECT value FROM index_meta WHERE key = 'embedding_dim'"
@@ -394,5 +422,70 @@ class PagefinderStore:
                 """,
                 (actor_id, limit),
             ).fetchall()
+        finally:
+            connection.close()
+
+    def record_document_update(
+        self,
+        page_id: str,
+        title: str,
+        old_version: int | None,
+        new_version: int | None,
+        change_type: str,
+    ) -> None:
+        connection = self._connect()
+        try:
+            connection.execute(
+                """
+                INSERT INTO document_updates
+                    (page_id, title, old_version, new_version, change_type, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (page_id, title, old_version, new_version, change_type, utc_now()),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+    def get_updates_since(self, since: str | None) -> list[sqlite3.Row]:
+        """Document updates recorded strictly after ``since`` (None → no updates)."""
+        if not since:
+            return []
+        connection = self._connect()
+        try:
+            return connection.execute(
+                """
+                SELECT page_id, title, old_version, new_version, change_type, updated_at
+                FROM document_updates
+                WHERE updated_at > ?
+                ORDER BY updated_at ASC
+                """,
+                (since,),
+            ).fetchall()
+        finally:
+            connection.close()
+
+    def get_last_seen(self, actor_id: str) -> str | None:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT last_seen_at FROM user_activity WHERE actor_id = ?",
+                (actor_id,),
+            ).fetchone()
+            return row["last_seen_at"] if row else None
+        finally:
+            connection.close()
+
+    def set_last_seen(self, actor_id: str, timestamp: str | None = None) -> None:
+        connection = self._connect()
+        try:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO user_activity (actor_id, last_seen_at)
+                VALUES (?, ?)
+                """,
+                (actor_id, timestamp or utc_now()),
+            )
+            connection.commit()
         finally:
             connection.close()
