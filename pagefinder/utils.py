@@ -15,6 +15,35 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Pictographic / emoji ranges. Deliberately excludes em dash (—), en dash, bullet (•),
+# ellipsis and other normal punctuation so list formatting stays intact.
+_EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF"  # emoji, symbols & pictographs, supplemental
+    "\U00002600-\U000026FF"   # miscellaneous symbols
+    "\U00002700-\U000027BF"   # dingbats (✂ ✅ ✓ ✗ …)
+    "\U00002B00-\U00002BFF"   # misc symbols & arrows (★ ⬆ …)
+    "\U00002300-\U000023FF"   # technical (⌚ ⏰ …)
+    "\U0000FE00-\U0000FE0F"   # variation selectors
+    "\U0001F1E6-\U0001F1FF"   # regional indicators (flags)
+    "\U0000200D]"             # zero-width joiner
+)
+
+
+def strip_decorations(text: str) -> str:
+    """Remove emojis/icons and any leaked page_id from a reply, deterministically — so
+    the output stays plain regardless of what the LLM tried to add. Safe on plain text."""
+    if not text:
+        return text
+    text = _EMOJI_RE.sub("", text)
+    # Drop leaked page identifiers in any shape: "page_id=123", "(Page ID: 123)", "Page ID 123".
+    text = re.sub(r"\(?\s*page[ _]?id\s*[:=]?\s*\d+\s*\)?", "", text, flags=re.IGNORECASE)
+    # Tidy whitespace left behind by removed icons.
+    text = re.sub(r"\*\*[ \t]+(?=\S)", "**", text)            # "**  Title" -> "**Title"
+    text = re.sub(r"(?m)^[ \t]+(?=(\*\*|#{1,6}\s|\[|- |\* ))", "", text)  # leading space before a marker
+    text = re.sub(r"[ \t]{2,}", " ", text)                    # collapse runs
+    return "\n".join(line.rstrip() for line in text.split("\n"))
+
+
 def build_namespace(memory_strategy_id: str, actor_id: str) -> str:
     return f"/strategies/{memory_strategy_id}/actors/{actor_id}"
 
@@ -90,6 +119,26 @@ def looks_like_list_request(message: str) -> bool:
         "co nhung document", "tai lieu nao", "co document gi", "co nhung trang",
     ]
     return any(phrase in lowered for phrase in phrases)
+
+
+def looks_like_list_notes_request(message: str) -> bool:
+    """True for 'list/show my saved notes' — but NOT add/edit/delete-note requests."""
+    folded = normalize_text(fold_accents(message))
+    if "ghi chu" not in folded and "note" not in folded:
+        return False
+    # add / edit / delete intents must go to their own tools via the agent, not the list.
+    write_verbs = (
+        "them ghi chu", "luu ghi chu", "them note", "add note", "ghi chu cho", "ghi chu la",
+        "ghi chu thanh", "xoa", "sua", "chinh sua", "cap nhat ghi chu", "update ghi chu",
+        "delete", "edit",
+    )
+    if any(v in folded for v in write_verbs):
+        return False
+    list_verbs = (
+        "liet ke", "danh sach", "list", "show", "xem", "hien thi", "co nhung", "co bao nhieu",
+        "co may", "cua toi", "cua minh", "da luu", "nao", "tat ca",
+    )
+    return any(v in folded for v in list_verbs)
 
 
 def looks_like_whats_new_request(message: str) -> bool:

@@ -17,8 +17,10 @@ from pagefinder.utils import (
     extract_page_ids_from_text,
     is_vietnamese,
     looks_like_list_request,
+    looks_like_list_notes_request,
     looks_like_summary_request,
     looks_like_whats_new_request,
+    strip_decorations,
     utc_now,
 )
 
@@ -261,21 +263,9 @@ def add_document_note(page_id: str, note: str) -> str:
 
 @tool
 def list_document_notes(page_id: str = "") -> str:
-    """List saved personal notes, optionally filtered to one document page (from AgentBase memory)."""
-    if not config.ENABLE_AGENTBASE_MEMORY or memory_client is None:
-        return "AgentBase Memory is disabled in this deployment; cannot list notes."
-    actor_id = get_actor_id()
-    namespace = build_note_namespace(actor_id)
-    records = _memory_records(memory_client.list_memory_records(id=config.MEMORY_ID, namespace=namespace))
-    prefix = f"page_id={page_id} |" if page_id else ""
-    lines = []
-    for row in records:
-        mem = _rec_field(row, "memory")
-        if mem and (not prefix or mem.startswith(prefix)):
-            lines.append(f"- {mem}")
-    if not lines:
-        return "No saved document notes found."
-    return "\n".join(lines)
+    """List saved personal notes, optionally filtered to one document page (from AgentBase memory).
+    Returns a ready-to-display markdown bullet list (title linked to URL, page_id hidden) — relay it AS-IS."""
+    return _list_notes_text(get_actor_id(), get_user_message(), page_id)
 
 
 def _parse_note_record(mem: str) -> tuple[str, str, str]:
@@ -285,6 +275,36 @@ def _parse_note_record(mem: str) -> tuple[str, str, str]:
     title = parts[1][len("title="):] if len(parts) > 1 and parts[1].startswith("title=") else ""
     note = parts[2] if len(parts) > 2 else ""
     return pid, title, note
+
+
+def _list_notes_text(actor_id: str, message: str = "", page_id: str = "") -> str:
+    """Build a ready-to-display markdown list of the user's saved notes — each as
+    '- [title](url) — note', page_id hidden, in the user's language. Used by both the
+    tool and the handler fast-path so the listing never depends on the LLM."""
+    vi = is_vietnamese(message)
+    if not config.ENABLE_AGENTBASE_MEMORY or memory_client is None:
+        return (
+            "Tính năng ghi chú cá nhân đang tắt trong hệ thống này."
+            if vi else "AgentBase Memory is disabled in this deployment; cannot list notes."
+        )
+    namespace = build_note_namespace(actor_id)
+    records = _memory_records(memory_client.list_memory_records(id=config.MEMORY_ID, namespace=namespace))
+    prefix = f"page_id={page_id} |" if page_id else ""
+    lines = []
+    for row in records:
+        mem = _rec_field(row, "memory")
+        if not mem or (prefix and not mem.startswith(prefix)):
+            continue
+        pid, title, note = _parse_note_record(mem)
+        page = service.store.get_page(pid) if pid else None
+        url = page.get("url") if page else None
+        label = (title or pid).replace("[", "(").replace("]", ")")
+        head = f"[{label}]({url})" if url else label
+        lines.append(f"- {head} — {note}" if note else f"- {head}")
+    if not lines:
+        return "Bạn chưa lưu ghi chú nào." if vi else "No saved notes yet."
+    header = "Các ghi chú đã lưu của bạn:" if vi else "Your saved notes:"
+    return header + "\n" + "\n".join(lines)
 
 
 def _find_note_matches(page_id: str, note_text: str) -> list[tuple[str, str]]:
@@ -477,6 +497,11 @@ agent = create_agent(
 )
 
 
+def _success(text: str) -> dict:
+    """Build a success response with the reply sanitized (no emojis / leaked page_id)."""
+    return {"status": "success", "response": strip_decorations(text), "timestamp": utc_now()}
+
+
 @app.entrypoint
 def handler(payload: dict, context: RequestContext) -> dict:
     if config.ENABLE_AGENTBASE_MEMORY and (not context.user_id or not context.session_id):
@@ -534,34 +559,30 @@ def handler(payload: dict, context: RequestContext) -> dict:
                         ),
                     ]
                 ).content
-                return {
-                    "status": "success",
-                    "response": f"{summary}\n\n{url}",
-                    "timestamp": utc_now(),
-                }
+                return _success(f"{summary}\n\n{url}")
 
             page_content = service.read_document_impl(
                 page_id,
                 message,
                 actor_id=actor_id,
             )
-            if page_content.startswith("Could not read") or page_content.startswith("Page "):
-                return {"status": "success", "response": page_content, "timestamp": utc_now()}
-            return {"status": "success", "response": page_content, "timestamp": utc_now()}
+            return _success(page_content)
 
         # Fast-paths: deterministic intents that need no agent reasoning. Calling the
         # tool logic directly skips both LLM round-trips (tool-selection + relay), so
         # these answers return in milliseconds instead of waiting on the model twice.
         # what's-new is checked before list: an update question can contain "tài liệu nào"
         # which would otherwise look like a plain list request.
+        if looks_like_list_notes_request(message):
+            return _success(_list_notes_text(actor_id, message))
         if looks_like_whats_new_request(message):
             try:
                 whats_new = service.check_document_updates_impl(actor_id, last_update_check_before, message)
             except Exception as error:
                 whats_new = service.format_source_error(error)
-            return {"status": "success", "response": whats_new, "timestamp": utc_now()}
+            return _success(whats_new)
         if looks_like_list_request(message):
-            return {"status": "success", "response": _list_documents_text(message), "timestamp": utc_now()}
+            return _success(_list_documents_text(message))
 
         runtime_config = {
             "configurable": {
@@ -573,7 +594,7 @@ def handler(payload: dict, context: RequestContext) -> dict:
         }
         result = agent.invoke({"messages": [{"role": "user", "content": message}]}, config=runtime_config)
         ai_message = result["messages"][-1]
-        return {"status": "success", "response": ai_message.content, "timestamp": utc_now()}
+        return _success(ai_message.content)
     finally:
         service.store.set_last_seen(actor_id)
 
