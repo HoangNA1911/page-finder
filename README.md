@@ -5,6 +5,7 @@
 A RAG-powered chat agent that makes your Confluence knowledge base instantly searchable and always up to date.
 
 ## Demo
+Link youtube: https://www.youtube.com/watch?v=XguYGxfrL94
 
 [![Demo](https://img.youtube.com/vi/XguYGxfrL94/maxresdefault.jpg)](https://www.youtube.com/watch?v=XguYGxfrL94)
 
