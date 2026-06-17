@@ -7,7 +7,7 @@ A RAG-powered chat agent that makes your Confluence knowledge base instantly sea
 ## Demo
 Link youtube: https://www.youtube.com/watch?v=XguYGxfrL94
 
-[![Demo](https://img.youtube.com/vi/XguYGxfrL94/maxresdefault.jpg)](https://www.youtube.com/watch?v=XguYGxfrL94)
+<video src="./demo.mov" controls width="100%"></video>
 
 **Try it live:** https://endpoint-a469d99f-1eda-4c3a-8453-6beeb52a7bf1.agentbase-runtime.aiplatform.vngcloud.vn/
 
@@ -32,15 +32,15 @@ The primary users are members of technical or business teams who regularly rely 
 
 ## Solution
 
-Pagefinder operates on a RAG (Retrieval-Augmented Generation) model powered by an OpenAI-compatible LLM (configurable via `LLM_MODEL`). It combines two complementary search strategies to retrieve the most relevant content:
+Pagefinder operates on a RAG (Retrieval-Augmented Generation) model. It combines two complementary search strategies to retrieve the most relevant content:
 
 - **Semantic search (KNN)** — finds content by meaning, not just exact words (42% of the hybrid score)
 - **Keyword search (FTS5)** — matches lexical terms for precise recall (38% of the hybrid score)
 - **Metadata boost** — promotes results by title, heading, and phrase relevance (20% of the hybrid score)
 
-The index is built from chunked Confluence pages with embedding vectors stored in SQLite via `sqlite-vec`. An incremental background sync keeps the index fresh automatically — only pages whose version changed are reindexed, minimizing Confluence API calls. A full forced rebuild is also available when needed.
+The index is built from Confluence pages that are automatically chunked and stored locally. An incremental background sync keeps the index fresh automatically — only pages that have changed are reindexed. A full forced rebuild is also available when needed.
 
-Pagefinder supports indexing entire Confluence spaces (via `CONFLUENCE_SPACE_KEYS`) and explicit page lists (via `CONFLUENCE_PAGE_IDS`), unioned together on every sync.
+Pagefinder supports indexing entire Confluence spaces and explicit page lists, unioned together on every sync.
 
 ---
 
