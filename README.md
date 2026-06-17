@@ -1,248 +1,71 @@
-# GreenNode AgentBase Skills
+# Pagefinder
 
-A bundle of [SKILL.md](https://www.mintlify.com/blog/skill-md)-compatible skills that drive the full **GreenNode AgentBase** lifecycle — scaffold → configure → code → test → deploy → monitor → teardown — from inside your AI coding tool.
+![Pagefinder](./thumbnail.png)
 
-Drop them into **Claude Code**, **Cursor**, **OpenAI Codex**, or any other SKILL.md-aware client and you get slash commands like `/agentbase-wizard`, `/agentbase-deploy`, `/agentbase-monitor`. The skills are plain Markdown + shell — no client-specific runtime — so the **full lifecycle works in every tool that can read SKILL.md and run a shell**.
+A RAG-powered chat agent that makes your Confluence knowledge base instantly searchable and always up to date.
 
----
+## Demo
 
-## TL;DR — Install in 30 Seconds
+[![Demo](https://img.youtube.com/vi/XguYGxfrL94/maxresdefault.jpg)](https://www.youtube.com/watch?v=XguYGxfrL94)
 
-```bash
-git clone https://github.com/vngcloud/greennode-agentbase-skills.git
-
-# Pick the install target for your tool (see table below)
-#   Claude Code  → ~/.claude/skills        or  <project>/.claude/skills
-#   Cursor       → ~/.cursor/skills        or  <project>/.cursor/skills
-#   Codex        → ~/.agents/skills        or  <project>/.agents/skills
-
-mkdir -p ~/.claude/skills
-cp -r greennode-agentbase-skills/.claude/skills/* ~/.claude/skills/
-```
-
-Then restart your tool and type `/agentbase-wizard` (or just say *"build me a Telegram bot"*).
+**Try it live:** https://endpoint-a469d99f-1eda-4c3a-8453-6beeb52a7bf1.agentbase-runtime.aiplatform.vngcloud.vn/
 
 ---
 
-## Install Per Tool
+## Problem
 
-All skills live under `.claude/skills/`. They are plain folders with a `SKILL.md` file inside — no build step. Each client auto-discovers them from a known directory.
-
-### 1. Claude Code
-
-The native home for these skills.
-
-```bash
-# Global (recommended — available in every project)
-mkdir -p ~/.claude/skills
-cp -r greennode-agentbase-skills/.claude/skills/* ~/.claude/skills/
-
-# OR project-scoped
-mkdir -p <your-project>/.claude/skills
-cp -r greennode-agentbase-skills/.claude/skills/* <your-project>/.claude/skills/
-```
-
-Launch and use:
-
-```bash
-cd <your-project> && claude
-> /agentbase-wizard          # slash command
-> "deploy my agent"           # or just describe intent — Claude picks the skill
-```
-
-> **Tip:** `claude` will auto-load every `SKILL.md` it finds. To verify, run `/help` and look for the skills section.
-
-### 2. Cursor
-
-Cursor's skills support and exact path have evolved across releases — **check your version's docs** for the correct skills directory before installing. Typical layout:
-
-```bash
-mkdir -p ~/.cursor/skills
-cp -r greennode-agentbase-skills/.claude/skills/* ~/.cursor/skills/
-# or project-scoped: <your-project>/.cursor/skills/
-```
-
-Open Cursor → Agent chat → type `/` to search skills. Agent mode runs bash / curl, so deploy / monitor / teardown work end-to-end.
-
-### 3. OpenAI Codex
-
-```bash
-export OPENAI_API_KEY="..."
-cd <your-project> && codex
-```
-
-Codex CLI reads SKILL.md-style files; **the exact discovery path depends on your Codex version** (commonly `~/.agents/skills/` or `<project>/.agents/skills/` — check your version's docs). Once discovered, the CLI executes shell + HTTP calls, so the full lifecycle works.
-
-### 4. Other SKILL.md-compatible Clients
-
-Any client that (a) reads SKILL.md frontmatter (`name`, `description`) and (b) can run shell commands will work. Point the client at the `.claude/skills/` directory or copy folders into whatever skills path it expects.
-
-### Compatibility Matrix
-
-The skills are **tool-agnostic** — they're just Markdown procedures plus `bash` / `curl` calls to the GreenNode REST APIs. Every SKILL.md-aware client with shell access can run them end-to-end. Differences below are about **UX**, not capability.
-
-| | Claude Code | Cursor | Codex | Other SKILL.md clients |
-|---|:-:|:-:|:-:|:-:|
-| Typical skills directory | `.claude/skills/` | `.cursor/skills/` | `.agents/skills/` | client-specific |
-| Invocation | `/skill-name` | `/skill-name` (Agent) | natural language / CLI | varies |
-| Auto-routing by description | ✅ native | ✅ | ✅ | depends on client |
-| Runs shell / HTTP from skills | ✅ | ✅ (Agent mode) | ✅ | requires shell tool |
-| Full deploy & monitor pipeline | ✅ | ✅ | ✅ | ✅ if shell available |
-
-> The skills are authored and tuned primarily on Claude Code — that's where routing and prompts are validated. Functionally though, every tool with shell access can run them; Cursor / Codex / other clients just don't have a dedicated test pass yet.
+Organizations using Confluence face a common challenge: internal documentation grows large but becomes hard to navigate. Team members spend time sifting through hundreds of wiki pages to find specific information. They often don't know what has changed since they last visited a page, leading to decisions made on outdated documentation. There is no central way to ask cross-page questions or get a synthesized answer from scattered content.
 
 ---
 
-## Prerequisites
+## Users
 
-Before any skill that hits the platform, set GreenNode IAM credentials:
+The primary users are members of technical or business teams who regularly rely on Confluence as their source of truth:
 
-```bash
-export GREENNODE_CLIENT_ID="<service-account-client-id>"
-export GREENNODE_CLIENT_SECRET="<service-account-secret>"
-```
-
-Put them in your shell profile or in a project-local `.env` (never commit it — `.env.example` is the tracked template).
-
-Skills that only read local files (e.g. `agentbase-wizard init`) work without credentials.
+- **Engineers** looking up runbooks, API specs, architecture decisions, and technical guidelines
+- **Product managers and analysts** tracking process changes, requirement updates, and business documentation
+- **New team members** onboarding and navigating an unfamiliar knowledge base
+- Anyone who needs fast, accurate answers without manually searching through Confluence
 
 ---
 
-## Skills Index
+## Solution
 
-| Skill | What it does |
+Pagefinder operates on a RAG (Retrieval-Augmented Generation) model powered by an OpenAI-compatible LLM (configurable via `LLM_MODEL`). It combines two complementary search strategies to retrieve the most relevant content:
+
+- **Semantic search (KNN)** — finds content by meaning, not just exact words (42% of the hybrid score)
+- **Keyword search (FTS5)** — matches lexical terms for precise recall (38% of the hybrid score)
+- **Metadata boost** — promotes results by title, heading, and phrase relevance (20% of the hybrid score)
+
+The index is built from chunked Confluence pages with embedding vectors stored in SQLite via `sqlite-vec`. An incremental background sync keeps the index fresh automatically — only pages whose version changed are reindexed, minimizing Confluence API calls. A full forced rebuild is also available when needed.
+
+Pagefinder supports indexing entire Confluence spaces (via `CONFLUENCE_SPACE_KEYS`) and explicit page lists (via `CONFLUENCE_PAGE_IDS`), unioned together on every sync.
+
+---
+
+## Features
+
+| Feature | Description |
 |---|---|
-| `/agentbase-wizard` | **Start here.** Guided 9-step lifecycle: scaffold → configure → code → test → deploy → verify. Also handles `init`, `test`, `resume`. |
-| `/agentbase` | Platform reference — architecture, services, IAM, "which skill should I use". |
-| `/agentbase-identity` | Register agent identities; store API keys / OAuth2 credentials for external services (OpenAI, Google, Slack, …). |
-| `/agentbase-llm` | Manage **platform** LLM access — API keys, model catalog, rate limits, OpenAI-compatible endpoint. |
-| `/agentbase-memory` | Conversation history, semantic memory, long-term memory stores (LangChain/LangGraph integration). |
-| `/agentbase-deploy` | Build & push Docker image, create/update Custom Agent runtimes (PUBLIC/VPC), deploy OpenClaw Telegram/Zalo bots, manage the Container Registry. |
-| `/agentbase-monitor` | Runtime logs, endpoint logs, CPU/RAM metrics, unified resource dashboard. |
-| `/agentbase-gateway` | Resource Gateway (MCP) CRUD; inbound auth (NONE / IAM / JWT); per-target outbound auth (APIKEY / OAUTH 2LO / 3LO); VPC routes; Policy Group binding. |
-| `/agentbase-policy` | Authorization policies — Policy Groups, Policies, and `statement` bodies (effect / principal / actions / resources / condition). Enforced today on the Resource Gateway. |
-| `/agentbase-teardown` | Delete **all** resources for a project. Always supports `--dry-run`. |
-
-### Lifecycle Map
-
-```
-┌────────────────────────────────────────────────────────┐
-│ GET STARTED                                            │
-│   /agentbase-wizard ────── guided A → Z                │
-│   /agentbase ───────────── platform reference          │
-├────────────────────────────────────────────────────────┤
-│ BUILD & CONFIGURE                                      │
-│   /agentbase-wizard init ── scaffold project           │
-│   /agentbase-llm ────────── platform LLM access        │
-│   /agentbase-identity ───── identities & external auth │
-│   /agentbase-memory ─────── memory stores              │
-├────────────────────────────────────────────────────────┤
-│ TEST & DEPLOY                                          │
-│   /agentbase-wizard test ── validate / local / docker  │
-│   /agentbase-deploy ─────── build, push, deploy        │
-├────────────────────────────────────────────────────────┤
-│ OPERATE                                                │
-│   /agentbase-monitor ────── logs, metrics, dashboard   │
-│   /agentbase-gateway ────── Resource Gateway (MCP)     │
-│   /agentbase-policy ─────── access policies            │
-├────────────────────────────────────────────────────────┤
-│ ADVANCED                                               │
-│   /agentbase-deploy cr ──── Container Registry         │
-│   /agentbase-teardown ───── delete everything          │
-└────────────────────────────────────────────────────────┘
-```
-
-### Common Subcommands
-
-```text
-/agentbase-wizard   [init <name> [--langchain|--langgraph] | test [validate|local|docker|preflight] | resume | step-N | reset]
-/agentbase-identity identity <create|list|get|update|delete>          [name]
-                    auth     <apikey|delegated|oauth2> <create|list|get|update|delete|retrieve> [name]
-/agentbase-llm      <api-keys|models> <create|list|get|update|delete|enable|disable|rate-limit> [name-or-uuid]
-/agentbase-memory   memory  <create|list|get|delete> [id]
-                    events  <list|create|delete>
-                    records <browse|search|generate-from-session|generate-from-content|insert|delete>
-/agentbase-deploy   Custom Agent: build → push → deploy, runtime CRUD, scale, versions
-                    OpenClaw:     create|list|start|stop|switch-version (Telegram/Zalo templates)
-                    Container Registry: repo info, credentials, images, artifacts
-/agentbase-monitor  <runtime-logs|endpoint-logs|metrics|dashboard> [runtime-id] [endpoint-id]
-/agentbase-gateway  <create|list|get|update|delete|routes|repair|flavors> [gateway-name]
-/agentbase-policy   <group|policy> <create|list|get|update|delete> [group-id-or-name] [policy-id-or-name]
-/agentbase-teardown <project-name> [--dry-run]
-```
-
-> These skills are driven by natural language — the syntax above is a quick reference, not a strict CLI. Tell the model what you want and it picks the right operation.
+| **Natural language Q&A** | Ask questions in plain language; receive answers with source references to the original Confluence pages |
+| **Document listing** | List all currently indexed documents |
+| **Full page read** | Fetch and return the complete content of any indexed page |
+| **Change tracking** | See all documents that changed since your last update check, without triggering a Confluence sync |
+| **Page diff** | View the latest diff for a specific page — what was added, removed, or modified |
+| **Incremental sync** | Reindex only pages whose version has changed since the last sync |
+| **Full rebuild** | Force a complete re-index of all pages regardless of version |
+| **Document notes** | Add and retrieve personal notes attached to a specific page (requires AgentBase Memory) |
+| **Reading history** | View your own reading history across sessions |
+| **Personal memory** | Store and recall personal preferences or facts across conversations (requires AgentBase Memory) |
 
 ---
 
-## End-to-End Example — Build a Chatbot
+## Benefit
 
-```bash
-/agentbase-wizard init my-chatbot --langgraph   # scaffold
-/agentbase-llm api-keys create my-chatbot-key   # platform LLM key
-/agentbase-memory create                         # optional memory store
-/agentbase-wizard test local                     # smoke test locally
-/agentbase-deploy deploy                         # build → push → deploy
-/agentbase-monitor runtime-logs <runtime-id>     # watch it run
-```
-
-Or, first time, just:
-
-```text
-/agentbase-wizard
-```
-
-…and follow the prompts.
+Pagefinder delivers a significant reduction in time spent searching for information. Teams stay informed of the latest documentation updates without needing to actively monitor Confluence. This helps accelerate decision-making and reduces the risk of acting on outdated information — especially in fast-moving projects where documentation changes frequently.
 
 ---
 
-## Troubleshooting
+## Development
 
-| Symptom | Fix |
-|---|---|
-| Skill doesn't appear | Confirm the file is at `<skills-dir>/<skill-name>/SKILL.md` with valid `name` + `description` frontmatter, then restart the tool. |
-| `401 Unauthorized` | `GREENNODE_CLIENT_ID` / `GREENNODE_CLIENT_SECRET` missing, expired, or service account lacks IAM policies. |
-| `OOMKilled` during deploy | Pick a larger flavor — ask `/agentbase-deploy` to list eligible flavors and resize the runtime. |
-| Want to resume a half-finished session | State persists in `.agentbase-state.json` — run `/agentbase-wizard resume`. |
-| Different skill behavior across tools | Tightest validator wins (typically Claude Desktop). Re-read the SKILL.md frontmatter; description length / characters may need trimming. |
-
----
-
-## Repo Layout
-
-```
-greennode-agentbase-skills/
-├── .claude/skills/             # <-- the skills you install
-│   ├── agentbase/              # platform reference
-│   ├── agentbase-wizard/       # guided full-lifecycle wizard
-│   ├── agentbase-deploy/       # build, push, deploy + Container Registry + OpenClaw
-│   ├── agentbase-identity/     # agent identities & outbound auth
-│   ├── agentbase-llm/          # platform LLM API keys & models
-│   ├── agentbase-memory/       # conversation + semantic memory
-│   ├── agentbase-monitor/      # logs, metrics, dashboard
-│   ├── agentbase-gateway/      # Resource Gateway (MCP)
-│   ├── agentbase-policy/       # authorization policies
-│   └── agentbase-teardown/     # delete all resources
-└── README.md
-```
-
-Each skill folder contains a `SKILL.md` (the contract read by the AI tool) and any helper `scripts/` or `references/` it needs.
-
----
-
-## Contributing & Extending
-
-- Each skill is just a folder with a `SKILL.md` file — copy an existing one as a template.
-- Frontmatter (`name`, `description`) is a public contract — renaming breaks downstream tools. Update `README.md` cross-references when you rename.
-- Skill descriptions must satisfy the **tightest** client validator (typically Claude Desktop's character limit). Verify before committing.
-- Test the skill end-to-end in Claude Code (or your target client) before opening a PR — descriptions drive auto-routing, so a small wording change can shift which skill is picked.
-
----
-
-## Important Notes
-
-1. **Verify IAM credentials first** — the majority of platform errors are missing `GREENNODE_CLIENT_ID` / `GREENNODE_CLIENT_SECRET` or insufficient policies.
-2. **Validate before deploy** — `/agentbase-wizard test validate`.
-3. **Always `--dry-run` teardown** before the real delete.
-4. **Never commit `.env`** — only `.env.example` is tracked.
-5. **First time? Use `/agentbase-wizard`** — it covers the full 9-step path.
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for setup instructions, environment configuration, and architecture details.
